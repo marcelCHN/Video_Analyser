@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>豆包实时视频理解</title>
-    <!-- 使用全球镜像 CDN，不再依赖火山内部域名 -->
-    <script src="https://unpkg.com/@volcengine/rtc-sdk@4.45.0/dist/index.js" onerror="this.src='https://cdn.jsdelivr.net/npm/@volcengine/rtc-sdk@4.45.0/dist/index.js'"></script>
+    <!-- 核心：使用阿里巴巴 npmmirror 镜像，这是国内最稳定的源 -->
+    <script src="https://registry.npmmirror.com/@volcengine/rtc-sdk/4.45.0/files/dist/index.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
@@ -14,20 +14,31 @@
         .bottom-overlay { position: absolute; bottom: 80px; left: 0; width: 100%; padding: 0 25px; box-sizing: border-box; z-index: 10; }
         .ai-message { font-size: 24px; color: #ffffff; line-height: 1.4; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
         .ai-name { color: #9c8fff; margin-right: 10px; font-weight: bold; }
-        #start-mask { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .start-btn { background: #7d60f5; color: white; border: none; padding: 16px 50px; border-radius: 35px; font-size: 18px; font-weight: bold; }
-        #sdk-status { color: #666; font-size: 12px; margin-top: 15px; }
+        #start-mask { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .start-btn { background: #7d60f5; color: white; border: none; padding: 16px 50px; border-radius: 35px; font-size: 18px; font-weight: bold; margin-bottom: 20px; }
+        #status-tip { color: #888; font-size: 13px; }
+        #wechat-tip { display: none; color: #ff4d4f; background: #fff; padding: 15px; border-radius: 10px; margin: 20px; font-weight: bold; }
     </style>
 </head>
 <body>
     <video id="local-video" autoplay playsinline muted></video>
-    <div class="top-bar"><div class="icon-power"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg></div></div>
+    <div id="wechat-tip">⚠️ 检测到你在微信中打开，请点击右上角“...”选择“在浏览器中打开”，否则无法使用摄像头。</div>
+    
+    <div class="top-bar">
+        <div class="icon-power">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path>
+            </svg>
+        </div>
+    </div>
+
     <div class="bottom-overlay">
         <div class="ai-message"><span class="ai-name">豆包:</span><span id="ai-text">等待连接...</span></div>
     </div>
+
     <div id="start-mask">
         <button class="start-btn" onclick="initCall()">开始实时视频通话</button>
-        <div id="sdk-status">检测 SDK 状态...</div>
+        <div id="status-tip">⏳ 正在连接插件服务器...</div>
     </div>
 
     <script>
@@ -38,35 +49,35 @@
             token: "001694e815bd68e9101747f2d3bRADHACIF1oVOaVbAV2kEAHp3ZncKAG1hcmNlbF8wMDEGAAAAVsBXaQEAVsBXaQIAVsBXaQMAVsBXaQQAVsBXaQUAVsBXaSAAI2GnIyGyFhSffyVHHr+SEoKL6rpC+uDe+k621Fvl964="
         };
 
-        // 自动检测 SDK 是否加载成功
-        function getSDK() {
+        // 1. 检查是否在微信环境
+        if (/MicroMessenger/i.test(navigator.userAgent)) {
+            document.getElementById('wechat-tip').style.display = 'block';
+        }
+
+        // 2. 轮询检测 SDK 加载状态
+        function checkSDK() {
             const sdk = window.VolcEngineRTC || window.VERTC;
-            const statusDiv = document.getElementById('sdk-status');
+            const tip = document.getElementById('status-tip');
             if (sdk) {
-                statusDiv.innerText = "✅ 插件已就绪";
-                statusDiv.style.color = "#52c41a";
+                tip.innerText = "✅ 插件加载成功";
+                tip.style.color = "#52c41a";
                 return sdk;
             }
-            statusDiv.innerText = "⏳ 插件加载中，请稍后...";
             return null;
         }
 
-        // 定时轮询，直到加载成功
-        const checkTimer = setInterval(() => { if(getSDK()) clearInterval(checkTimer); }, 1000);
+        setInterval(checkSDK, 1000);
 
         async function initCall() {
-            const VolcSDK = getSDK();
-            
+            const VolcSDK = checkSDK();
             if (!VolcSDK) {
-                alert("插件尚未加载完成，请确认网络是否能够访问镜像站。");
+                alert("插件仍在加载中。如果超过 10 秒没反应，请确保你不是在微信内直接打开，并尝试切换网络（WiFi/5G）。");
                 return;
             }
 
             document.getElementById('start-mask').style.display = 'none';
             try {
                 const engine = VolcSDK.createEngine(RTC_CONFIG.appId);
-                
-                // 监听 AI 消息
                 engine.on(VolcSDK.Events.onStreamMessageReceived, (uid, streamId, message) => {
                     document.getElementById('ai-text').innerText = new TextDecoder().decode(message);
                 });
