@@ -4,40 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>豆包实时视频理解</title>
-    <!-- 引入火山引擎最新版 Web RTC SDK -->
-    <script src="https://lf3-static.bytednsdoc.com/obj/eden-cn/pt_s_lp_r_v_r_e/volcengine-rtc-sdk.js"></script>
+    <!-- 更换为更稳定的火山引擎 SDK 官方版本链接 -->
+    <script src="https://lf3-static.bytednsdoc.com/obj/eden-cn/pt_s_lp_r_v_r_e/volcengine-rtc-sdk-4.45.0.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, "PingFang SC", sans-serif; }
         #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        
-        /* 顶部电源键 UI */
         .top-bar { position: absolute; top: 50px; left: 25px; z-index: 10; }
-        .icon-power { 
-            width: 44px; height: 44px; background: rgba(255, 255, 255, 0.15); 
-            border-radius: 50%; backdrop-filter: blur(10px); 
-            border: 1px solid rgba(255, 255, 255, 0.2); 
-            display: flex; align-items: center; justify-content: center; 
-        }
-
-        /* 底部字幕反馈 UI */
+        .icon-power { width: 44px; height: 44px; background: rgba(255, 255, 255, 0.15); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; }
         .bottom-overlay { position: absolute; bottom: 80px; left: 0; width: 100%; padding: 0 25px; box-sizing: border-box; z-index: 10; }
         .ai-message { font-size: 24px; color: #ffffff; line-height: 1.4; text-shadow: 0 2px 8px rgba(0,0,0,0.8); font-weight: 500; }
         .ai-name { color: #9c8fff; margin-right: 10px; font-weight: bold; }
-        
         .dots { display: flex; gap: 6px; margin-top: 15px; }
         .dot { width: 7px; height: 7px; background: rgba(255,255,255,0.3); border-radius: 50%; }
         .dot.active { background: #fff; box-shadow: 0 0 8px #fff; }
-
-        /* 启动遮罩 */
         #start-mask { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .start-btn { background: #7d60f5; color: white; border: none; padding: 16px 50px; border-radius: 35px; font-size: 18px; font-weight: bold; box-shadow: 0 4px 20px rgba(125, 96, 245, 0.4); }
     </style>
 </head>
 <body>
-    <!-- 视频预览 -->
     <video id="local-video" autoplay playsinline muted></video>
-
-    <!-- 顶部图标 -->
     <div class="top-bar">
         <div class="icon-power">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
@@ -45,25 +30,15 @@
             </svg>
         </div>
     </div>
-
-    <!-- 字幕区域 -->
     <div class="bottom-overlay">
-        <div class="ai-message">
-            <span class="ai-name">豆包:</span>
-            <span id="ai-text">等待连接...</span>
-        </div>
-        <div class="dots">
-            <div class="dot"></div><div class="dot active"></div><div class="dot"></div>
-        </div>
+        <div class="ai-message"><span class="ai-name">豆包:</span><span id="ai-text">等待连接...</span></div>
+        <div class="dots"><div class="dot"></div><div class="dot active"></div><div class="dot"></div></div>
     </div>
-
-    <!-- 启动层 -->
     <div id="start-mask">
-        <button class="start-btn" onclick="initCall()">开始实时视频通话</button>
+        <button class="start-btn" id="real-start-btn" onclick="initCall()">开始实时视频通话</button>
     </div>
 
     <script>
-        // 配置信息
         const RTC_CONFIG = {
             appId: "694e815bd68e9101747f2d3b",
             roomId: "zwfw",
@@ -72,8 +47,11 @@
         };
 
         async function initCall() {
-            if (typeof VolcEngineRTC === 'undefined') {
-                alert("SDK 加载中，请刷新页面或等候 2 秒再试");
+            // 同时兼容两种可能的 SDK 变量名
+            const VolcSDK = window.VolcEngineRTC || window.VERTC;
+            
+            if (!VolcSDK) {
+                alert("插件尚未加载完成，请检查手机网络并稍后刷新重试。");
                 return;
             }
 
@@ -81,27 +59,23 @@
             document.getElementById('ai-text').innerText = "正在开启摄像头...";
 
             try {
-                // 1. 初始化引擎
-                const engine = VolcEngineRTC.createEngine(RTC_CONFIG.appId);
+                const engine = VolcSDK.createEngine(RTC_CONFIG.appId);
                 
-                // 2. 监听消息（AI 的回复文本）
-                engine.on(VolcEngineRTC.Events.onStreamMessageReceived, (uid, streamId, message) => {
+                engine.on(VolcSDK.Events.onStreamMessageReceived, (uid, streamId, message) => {
                     const text = new TextDecoder().decode(message);
                     document.getElementById('ai-text').innerText = text;
                 });
 
-                // 3. 获取摄像头画面
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: 'environment' }, 
                     audio: true 
                 });
                 document.getElementById('local-video').srcObject = stream;
 
-                // 4. 加入房间并发布视频
                 await engine.joinRoom(RTC_CONFIG.token, RTC_CONFIG.roomId, { userId: RTC_CONFIG.userId });
-                await engine.publishStream(VolcEngineRTC.MediaType.AUDIO_AND_VIDEO);
+                await engine.publishStream(VolcSDK.MediaType.AUDIO_AND_VIDEO);
                 
-                document.getElementById('ai-text').innerText = "已就绪，请运行 Python 脚本唤醒 AI...";
+                document.getElementById('ai-text').innerText = "已就绪，请展示画面。";
             } catch (err) {
                 alert("连接失败: " + err.message);
                 document.getElementById('start-mask').style.display = 'flex';
