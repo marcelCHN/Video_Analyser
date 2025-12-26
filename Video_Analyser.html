@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>豆包实时视频理解</title>
+    <script src="https://lf3-static.bytednsdoc.com/obj/eden-cn/pt_s_lp_r_v_r_e/volcengine-rtc-sdk.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        .top-bar { position: absolute; top: 50px; left: 25px; z-index: 10; }
+        .icon-power { width: 44px; height: 44px; background: rgba(255, 255, 255, 0.15); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; }
+        .bottom-overlay { position: absolute; bottom: 80px; left: 0; width: 100%; padding: 0 25px; box-sizing: border-box; z-index: 10; }
+        .ai-message { font-size: 24px; color: #ffffff; line-height: 1.4; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+        .ai-name { color: #9c8fff; margin-right: 10px; font-weight: bold; }
+        .dots { display: flex; gap: 6px; margin-top: 15px; }
+        .dot { width: 7px; height: 7px; background: rgba(255,255,255,0.3); border-radius: 50%; }
+        .dot.active { background: #fff; box-shadow: 0 0 8px #fff; }
+        #start-mask { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .start-btn { background: #7d60f5; color: white; border: none; padding: 16px 50px; border-radius: 35px; font-size: 18px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <video id="local-video" autoplay playsinline muted></video>
+    <div class="top-bar"><div class="icon-power"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg></div></div>
+    <div class="bottom-overlay">
+        <div class="ai-message"><span class="ai-name">豆包:</span><span id="ai-text">等待开启...</span></div>
+        <div class="dots"><div class="dot"></div><div class="dot active"></div><div class="dot"></div></div>
+    </div>
+    <div id="start-mask">
+        <button class="start-btn" onclick="initCall()">开始实时视频通话</button>
+    </div>
+
+    <script>
+        const RTC_CONFIG = {
+            appId: "694e815bd68e9101747f2d3b",
+            roomId: "zwfw",
+            userId: "marcel_001",
+            token: "001694e815bd68e9101747f2d3bRADHACIF1oVOaVbAV2kEAHp3ZncKAG1hcmNlbF8wMDEGAAAAVsBXaQEAVsBXaQIAVsBXaQMAVsBXaQQAVsBXaQUAVsBXaSAAI2GnIyGyFhSffyVHHr+SEoKL6rpC+uDe+k621Fvl964="
+        };
+
+        async function initCall() {
+            document.getElementById('start-mask').style.display = 'none';
+            try {
+                const engine = VERTC.createEngine(RTC_CONFIG.appId);
+                // 核心：监听 AI 实时输出的文字消息
+                engine.on('onStreamMessageReceived', (uid, streamId, message) => {
+                    document.getElementById('ai-text').innerText = new TextDecoder().decode(message);
+                });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+                document.getElementById('local-video').srcObject = stream;
+                await engine.joinRoom(RTC_CONFIG.token, RTC_CONFIG.roomId, { userId: RTC_CONFIG.userId });
+                await engine.publishStream(VERTC.MediaType.AUDIO_AND_VIDEO);
+                document.getElementById('ai-text').innerText = "已连接，请开始展示画面或说话...";
+            } catch (err) {
+                alert("连接失败: " + err.message);
+            }
+        }
+    </script>
+</body>
+</html>
