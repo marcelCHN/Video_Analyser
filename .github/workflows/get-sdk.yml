@@ -1,0 +1,24 @@
+name: 自动下载SDK机器人
+on:
+  workflow_dispatch: # 允许手动点一下运行
+  push:
+    branches: [ main ] # 你每次提交代码时也会运行
+
+jobs:
+  download_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检查代码
+        uses: actions/checkout@v3
+
+      - name: 让云端机器人下载插件
+        run: |
+          curl -L "https://unpkg.com/@volcengine/rtc@4.45.0/dist/index.js" -o volcengine-rtc-sdk.js
+          
+      - name: 把下载好的文件存入我的仓库
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add volcengine-rtc-sdk.js
+          git commit -m "机器人自动添加了SDK插件" || echo "没有变化"
+          git push
