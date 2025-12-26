@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包通话 - 实时视频理解</title>
+    <title>豆包视频通话 - 最终版</title>
+    <!-- 使用本地仓库中的插件文件 -->
     <script src="volcengine-rtc-sdk.js"></script>
     <style>
         * { -webkit-tap-highlight-color: transparent; touch-action: manipulation; -webkit-user-select: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        #debug-log { position: absolute; top: 10px; left: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; font-size: 11px; z-index: 1000; border-radius: 5px; max-height: 120px; overflow-y: auto; }
+        #debug-log { position: absolute; top: 10px; left: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; font-size: 11px; z-index: 1000; border-radius: 5px; max-height: 100px; overflow-y: auto; pointer-events: none; }
         .bottom-overlay { position: absolute; bottom: 180px; left: 0; width: 100%; padding: 0 20px; z-index: 50; box-sizing: border-box; }
         .ai-msg-box { background: rgba(0,0,0,0.7); padding: 15px; border-radius: 12px; color: #fff; font-size: 18px; border: 1px solid rgba(255,255,255,0.2); line-height: 1.4; }
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
@@ -20,13 +21,13 @@
     </style>
 </head>
 <body>
-    <div id="debug-log">系统状态: 等待启动...</div>
+    <div id="debug-log">系统日志: 等待启动...</div>
     <video id="local-video" autoplay playsinline muted></video>
     <div id="remote-player" style="display:none"></div>
 
     <div class="bottom-overlay">
         <div class="ai-msg-box">
-            <span style="color:#9c8fff;font-weight:bold">豆包:</span> <span id="ai-text">请完成初始化...</span>
+            <span style="color:#9c8fff;font-weight:bold">豆包:</span> <span id="ai-text">请按步骤完成初始化...</span>
         </div>
     </div>
 
@@ -40,12 +41,11 @@
     <div id="start-mask"><button class="start-btn" onclick="initCall()">开启豆包视频通话</button></div>
 
     <script>
-        // 完全按照你文字提供的“第二阶段”参数
         const CONFIG = {
-            appId: "694e815bd68e9101747f2d3b", 
-            roomId: "marcel20251227",
-            userId: "marcel20251227",
-            token: "001694e815bd68e9101747f2d3bUgCHHWoF/bJOaX3tV2kOAG1hcmNlbDIwMjUxMjI3DgBtYXJjZWwyMDI1MTIyNwYAAAB97VdpAQB97VdpAgB97VdpAwB97VdpBAB97VdpBQB97VdpIADZIoA9w+XZ1o1GXJ4JC4lyo3axb22ov4oDlm4ZGZ3NRg=="
+            appId: "694e817400efda0175310f9e", 
+            roomId: "marcelroom",
+            userId: "marceluser",
+            token: "001694e817400efda0175310f9eSgCWU98FmrdOaRryV2kKAG1hcmNlbHJvb20KAG1hcmNlbHVzZXIGAAAAGvJXaQEAGvJXaQIAGvJXaQMAGvJXaQQAGvJXaQUAGvJXaSAAC94o5eNHsT4oSzS5/CFy5ZM3HBe9pDCB4bXKGGSkF+g="
         };
 
         let rtc, isRecording = false;
@@ -59,17 +59,23 @@
 
             try {
                 rtc = sdk.createEngine(CONFIG.appId);
+                
+                // 监听进房
                 rtc.on('onUserJoined', () => { 
-                    log("✅ 豆包已进房!"); 
+                    log("✅ 成功：豆包已进入房间！"); 
                     document.getElementById('ai-text').innerText = "豆包上线了，请点击按钮跟我说话";
                 });
+                
+                // 收听声音
                 rtc.on('onUserPublishStream', async (uid, type) => {
                     if (type === sdk.MediaType.AUDIO) {
-                        log("播放 AI 语音中...");
+                        log("接收声音流...");
                         const { player } = await rtc.subscribeStream(uid, sdk.MediaType.AUDIO);
                         player.play('remote-player');
                     }
                 });
+
+                // 接收字幕
                 rtc.on('onStreamMessageReceived', (uid, sid, msg) => {
                     document.getElementById('ai-text').innerText = new TextDecoder().decode(msg);
                 });
@@ -78,23 +84,28 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('local-video').srcObject = stream;
 
-                log("3. 正在进房 (Token 校验)...");
+                log("3. 正在进房 (参数校验)...");
                 await rtc.joinRoom(CONFIG.token, CONFIG.roomId, { userId: CONFIG.userId });
                 log("✅ 进房成功！");
-
-                log("4. 发布视频流...");
+                
+                log("4. 发布流中...");
                 await rtc.publishStream(sdk.MediaType.AUDIO_AND_VIDEO);
-                rtc.muteLocalAudioStream(true);
-                log("🎉 就绪！请在 Mac 运行 Python 脚本。");
+                rtc.muteLocalAudioStream(true); 
+                log("🎉 手机端就绪！现在去 Mac 运行 Python 脚本。");
 
-            } catch (e) { log("❌ 错误: " + e.message); }
+            } catch (e) {
+                log("❌ 失败: " + e.message);
+                alert("进房失败，请确认 AppID 和 Token。错误内容: " + e.message);
+            }
         }
 
         function toggleMic() {
             if (!rtc) return;
             isRecording = !isRecording;
             rtc.muteLocalAudioStream(!isRecording);
-            document.getElementById('talk-trigger').classList.toggle('recording', isRecording);
+            const btn = document.getElementById('talk-trigger');
+            btn.classList.toggle('recording', isRecording);
+            document.getElementById('talk-hint').innerText = isRecording ? "正在倾听..." : "点击说话";
             log(isRecording ? "🎤 麦克风已开启" : "🔇 麦克风已关闭");
         }
     </script>
