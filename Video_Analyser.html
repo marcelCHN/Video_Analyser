@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>豆包实时视频理解</title>
-    <!-- 核心：火山引擎标准 SDK 链接 -->
-    <script src="https://lf3-static.bytednsdoc.com/obj/eden-cn/pt_s_lp_r_v_r_e/volcengine-rtc-sdk.js" onerror="handleScriptError()"></script>
+    <!-- 使用全球镜像 CDN，不再依赖火山内部域名 -->
+    <script src="https://unpkg.com/@volcengine/rtc-sdk@4.45.0/dist/index.js" onerror="this.src='https://cdn.jsdelivr.net/npm/@volcengine/rtc-sdk@4.45.0/dist/index.js'"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
         #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
@@ -16,6 +16,7 @@
         .ai-name { color: #9c8fff; margin-right: 10px; font-weight: bold; }
         #start-mask { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .start-btn { background: #7d60f5; color: white; border: none; padding: 16px 50px; border-radius: 35px; font-size: 18px; font-weight: bold; }
+        #sdk-status { color: #666; font-size: 12px; margin-top: 15px; }
     </style>
 </head>
 <body>
@@ -26,11 +27,10 @@
     </div>
     <div id="start-mask">
         <button class="start-btn" onclick="initCall()">开始实时视频通话</button>
-        <p id="debug-info" style="color: #666; font-size: 12px; margin-top: 15px;"></p>
+        <div id="sdk-status">检测 SDK 状态...</div>
     </div>
 
     <script>
-        // 配置信息
         const RTC_CONFIG = {
             appId: "694e815bd68e9101747f2d3b",
             roomId: "zwfw",
@@ -38,43 +38,53 @@
             token: "001694e815bd68e9101747f2d3bRADHACIF1oVOaVbAV2kEAHp3ZncKAG1hcmNlbF8wMDEGAAAAVsBXaQEAVsBXaQIAVsBXaQMAVsBXaQQAVsBXaQUAVsBXaSAAI2GnIyGyFhSffyVHHr+SEoKL6rpC+uDe+k621Fvl964="
         };
 
-        function handleScriptError() {
-            document.getElementById('debug-info').innerText = "❌ 插件加载失败：请检查网络或切换至 5G/4G 流量重试。";
+        // 自动检测 SDK 是否加载成功
+        function getSDK() {
+            const sdk = window.VolcEngineRTC || window.VERTC;
+            const statusDiv = document.getElementById('sdk-status');
+            if (sdk) {
+                statusDiv.innerText = "✅ 插件已就绪";
+                statusDiv.style.color = "#52c41a";
+                return sdk;
+            }
+            statusDiv.innerText = "⏳ 插件加载中，请稍后...";
+            return null;
         }
 
+        // 定时轮询，直到加载成功
+        const checkTimer = setInterval(() => { if(getSDK()) clearInterval(checkTimer); }, 1000);
+
         async function initCall() {
-            const VolcSDK = window.VolcEngineRTC || window.VERTC;
+            const VolcSDK = getSDK();
             
             if (!VolcSDK) {
-                alert("插件尚未加载完成。请尝试：\n1. 切换 4G/5G 网络\n2. 点击地址栏末尾的刷新\n3. 复制链接到 Chrome/Safari 浏览器打开");
+                alert("插件尚未加载完成，请确认网络是否能够访问镜像站。");
                 return;
             }
 
             document.getElementById('start-mask').style.display = 'none';
             try {
                 const engine = VolcSDK.createEngine(RTC_CONFIG.appId);
+                
+                // 监听 AI 消息
                 engine.on(VolcSDK.Events.onStreamMessageReceived, (uid, streamId, message) => {
                     document.getElementById('ai-text').innerText = new TextDecoder().decode(message);
                 });
 
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' }, 
+                    audio: true 
+                });
                 document.getElementById('local-video').srcObject = stream;
+                
                 await engine.joinRoom(RTC_CONFIG.token, RTC_CONFIG.roomId, { userId: RTC_CONFIG.userId });
                 await engine.publishStream(VolcSDK.MediaType.AUDIO_AND_VIDEO);
-                document.getElementById('ai-text').innerText = "已就绪，请运行 Python 脚本。";
+                document.getElementById('ai-text').innerText = "已就绪，请运行 Python 脚本唤醒 AI。";
             } catch (err) {
                 alert("连接失败: " + err.message);
                 document.getElementById('start-mask').style.display = 'flex';
             }
         }
-        
-        // 自动检测提示
-        window.onload = () => {
-            if (window.VolcEngineRTC || window.VERTC) {
-                document.getElementById('debug-info').innerText = "✅ 插件已加载，点击上方按钮开始。";
-                document.getElementById('debug-info').style.color = "#52c41a";
-            }
-        };
     </script>
 </body>
 </html>
