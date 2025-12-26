@@ -1,37 +1,73 @@
-name: 自动下载SDK机器人
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>豆包视频实时理解</title>
+    <!-- 关键：读取机器人自动找回来的本地文件 -->
+    <script src="volcengine-rtc-sdk.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        .top-bar { position: absolute; top: 50px; left: 25px; z-index: 10; }
+        .icon-power { width: 44px; height: 44px; background: rgba(255, 255, 255, 0.15); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; }
+        .bottom-overlay { position: absolute; bottom: 80px; left: 0; width: 100%; padding: 0 25px; box-sizing: border-box; z-index: 10; }
+        .ai-message { font-size: 24px; color: #ffffff; line-height: 1.4; text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+        .ai-name { color: #9c8fff; margin-right: 12px; font-weight: bold; }
+        #start-mask { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .start-btn { background: #7d60f5; color: white; border: none; padding: 18px 55px; border-radius: 40px; font-size: 20px; font-weight: bold; box-shadow: 0 4px 25px rgba(125, 96, 245, 0.5); }
+        #sdk-status { color: #52c41a; font-size: 13px; margin-top: 20px; display: none; }
+    </style>
+</head>
+<body>
+    <video id="local-video" autoplay playsinline muted></video>
+    <div class="top-bar"><div class="icon-power"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg></div></div>
+    <div class="bottom-overlay">
+        <div class="ai-message"><span class="ai-name">豆包:</span><span id="ai-text">连接成功！请开始对话...</span></div>
+    </div>
+    <div id="start-mask">
+        <button class="start-btn" onclick="initCall()">开始实时视频通话</button>
+        <div id="sdk-status">✅ 本地 SDK 插件已加载</div>
+    </div>
 
-jobs:
-  download_job:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: 检查代码
-        uses: actions/checkout@v3
+    <script>
+        const CONFIG = {
+            appId: "694e815bd68e9101747f2d3b",
+            roomId: "zwfw",
+            userId: "marcel_001",
+            token: "001694e815bd68e9101747f2d3bRADHACIF1oVOaVbAV2kEAHp3ZncKAG1hcmNlbF8wMDEGAAAAVsBXaQEAVsBXaQIAVsBXaQMAVsBXaQQAVsBXaQUAVsBXaSAAI2GnIyGyFhSffyVHHr+SEoKL6rpC+uDe+k621Fvl964="
+        };
 
-      - name: 从官方原厂地址抓取SDK
-        run: |
-          # 使用官方最原始的 CDN 地址，GitHub 服务器一定能抓到
-          curl -L "https://lf3-static.bytednsdoc.com/obj/eden-cn/pt_s_lp_r_v_r_e/volcengine-rtc-sdk.js" -o volcengine-rtc-sdk.js
-          
-      - name: 验证文件是否抓取成功
-        run: |
-          # 如果文件小于 100KB，说明还是抓错了，直接报错停止
-          FILESIZE=$(stat -c%s "volcengine-rtc-sdk.js")
-          echo "文件大小为: $FILESIZE 字节"
-          if [ $FILESIZE -lt 100000 ]; then
-            echo "错误：抓取的文件太小，可能是错误页面！"
-            exit 1
-          fi
+        const checkSDK = () => {
+            const sdk = window.VolcEngineRTC || window.VERTC;
+            if (sdk) {
+                document.getElementById('sdk-status').style.display = 'block';
+                return sdk;
+            }
+            return null;
+        };
 
-      - name: 将真正的文件存入仓库
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add volcengine-rtc-sdk.js
-          git commit -m "机器人抓取了真正的官方SDK插件" || echo "没有变化"
-          git push
+        setInterval(checkSDK, 1000);
+
+        async function initCall() {
+            const sdk = checkSDK();
+            if (!sdk) { alert("插件加载失败，请刷新网页再试"); return; }
+            document.getElementById('start-mask').style.display = 'none';
+            try {
+                const engine = sdk.createEngine(CONFIG.appId);
+                engine.on('onStreamMessageReceived', (uid, streamId, message) => {
+                    document.getElementById('ai-text').innerText = new TextDecoder().decode(message);
+                });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+                document.getElementById('local-video').srcObject = stream;
+                await engine.joinRoom(CONFIG.token, CONFIG.roomId, { userId: CONFIG.userId });
+                await engine.publishStream(sdk.MediaType.AUDIO_AND_VIDEO);
+                document.getElementById('ai-text').innerText = "豆包正在听你说...";
+            } catch (e) {
+                alert("连接失败: " + e.message);
+                document.getElementById('start-mask').style.display = 'flex';
+            }
+        }
+    </script>
+</body>
+</html>
