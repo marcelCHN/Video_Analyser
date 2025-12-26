@@ -1,0 +1,37 @@
+name: 自动下载SDK机器人
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  download_job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检查代码
+        uses: actions/checkout@v3
+
+      - name: 从官方原厂地址抓取SDK
+        run: |
+          # 使用官方最原始的 CDN 地址，GitHub 服务器一定能抓到
+          curl -L "https://lf3-static.bytednsdoc.com/obj/eden-cn/pt_s_lp_r_v_r_e/volcengine-rtc-sdk.js" -o volcengine-rtc-sdk.js
+          
+      - name: 验证文件是否抓取成功
+        run: |
+          # 如果文件小于 100KB，说明还是抓错了，直接报错停止
+          FILESIZE=$(stat -c%s "volcengine-rtc-sdk.js")
+          echo "文件大小为: $FILESIZE 字节"
+          if [ $FILESIZE -lt 100000 ]; then
+            echo "错误：抓取的文件太小，可能是错误页面！"
+            exit 1
+          fi
+
+      - name: 将真正的文件存入仓库
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add volcengine-rtc-sdk.js
+          git commit -m "机器人抓取了真正的官方SDK插件" || echo "没有变化"
+          git push
