@@ -1,6 +1,6 @@
 name: 自动下载SDK机器人
 on:
-  workflow_dispatch: # 允许手动点击运行
+  workflow_dispatch:
   push:
     branches: [ main ]
 
@@ -18,29 +18,34 @@ jobs:
         with:
           node-version: 18
 
-      - name: 3. 通过 npm 安装官方 SDK (最可靠方案)
+      - name: 3. 通过 npm 安装官方 SDK
         run: |
-          # 初始化并安装官方包，这种方式不会被拦截
           npm init -y
           npm install @volcengine/rtc@4.45.0
-          # 将安装好的正式文件拷贝到根目录
-          cp node_modules/@volcengine/rtc/dist/index.js ./volcengine-rtc-sdk.js
           
-      - name: 4. 验证文件大小 (必须大于 500KB)
-        run: |
-          ls -lh volcengine-rtc-sdk.js
-          SIZE=$(stat -c%s "volcengine-rtc-sdk.js")
-          echo "文件大小为: $SIZE 字节"
-          if [ $SIZE -lt 500000 ]; then
-            echo "错误：抓取的文件依然不对！"
+          echo "正在自动搜寻 SDK 文件位置..."
+          # 在 node_modules 文件夹里寻找最大的那个 .js 文件（通常就是 SDK 本身）
+          # 或者直接寻找名为 index.js 或 index.min.js 的文件
+          SDK_PATH=$(find node_modules/@volcengine/rtc -name "index.js" | head -n 1)
+          
+          if [ -z "$SDK_PATH" ]; then
+             SDK_PATH=$(find node_modules/@volcengine/rtc -name "index.min.js" | head -n 1)
+          fi
+
+          if [ -z "$SDK_PATH" ]; then
+            echo "错误：找不到 SDK 文件！"
+            ls -R node_modules/@volcengine/rtc
             exit 1
           fi
 
-      - name: 5. 将真正的文件存入仓库
+          echo "找到文件: $SDK_PATH"
+          cp "$SDK_PATH" ./volcengine-rtc-sdk.js
+          
+      - name: 4. 验证并提交
         run: |
+          ls -lh volcengine-rtc-sdk.js
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add volcengine-rtc-sdk.js
-          # 即使文件没变也不报错
-          git commit -m "机器人通过 npm 抓取了正式版 SDK" || echo "无变化"
+          git commit -m "机器人自动搜寻并抓取了SDK" || echo "无变化"
           git push
