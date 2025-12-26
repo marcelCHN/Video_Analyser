@@ -1,6 +1,6 @@
 name: 自动下载SDK机器人
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动点击运行
   push:
     branches: [ main ]
 
@@ -10,28 +10,37 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: 检查代码
+      - name: 1. 检查仓库代码
         uses: actions/checkout@v3
 
-      - name: 从官方原厂地址抓取SDK
+      - name: 2. 设置 Node.js 环境
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: 3. 通过 npm 安装官方 SDK (最可靠方案)
         run: |
-          # 使用官方最原始的 CDN 地址，GitHub 服务器一定能抓到
-          curl -L "https://lf3-static.bytednsdoc.com/obj/eden-cn/pt_s_lp_r_v_r_e/volcengine-rtc-sdk.js" -o volcengine-rtc-sdk.js
+          # 初始化并安装官方包，这种方式不会被拦截
+          npm init -y
+          npm install @volcengine/rtc@4.45.0
+          # 将安装好的正式文件拷贝到根目录
+          cp node_modules/@volcengine/rtc/dist/index.js ./volcengine-rtc-sdk.js
           
-      - name: 验证文件是否抓取成功
+      - name: 4. 验证文件大小 (必须大于 500KB)
         run: |
-          # 如果文件小于 100KB，说明还是抓错了，直接报错停止
-          FILESIZE=$(stat -c%s "volcengine-rtc-sdk.js")
-          echo "文件大小为: $FILESIZE 字节"
-          if [ $FILESIZE -lt 100000 ]; then
-            echo "错误：抓取的文件太小，可能是错误页面！"
+          ls -lh volcengine-rtc-sdk.js
+          SIZE=$(stat -c%s "volcengine-rtc-sdk.js")
+          echo "文件大小为: $SIZE 字节"
+          if [ $SIZE -lt 500000 ]; then
+            echo "错误：抓取的文件依然不对！"
             exit 1
           fi
 
-      - name: 将真正的文件存入仓库
+      - name: 5. 将真正的文件存入仓库
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add volcengine-rtc-sdk.js
-          git commit -m "机器人抓取了真正的官方SDK插件" || echo "没有变化"
+          # 即使文件没变也不报错
+          git commit -m "机器人通过 npm 抓取了正式版 SDK" || echo "无变化"
           git push
