@@ -4,89 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>豆包视频实时理解</title>
-    <!-- 读取本地 SDK -->
     <script src="volcengine-rtc-sdk.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, "PingFang SC", sans-serif; }
-        
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-
-        /* 顶部电源/退出按钮 */
-        .top-bar { position: absolute; top: 50px; left: 25px; z-index: 10; cursor: pointer; }
-        .icon-power { 
-            width: 44px; height: 44px; background: rgba(0, 0, 0, 0.3); 
-            border-radius: 50%; backdrop-filter: blur(10px); 
-            border: 1px solid rgba(255, 255, 255, 0.3); 
-            display: flex; align-items: center; justify-content: center; 
-        }
-
-        /* 底部字幕区 */
-        .bottom-overlay { 
-            position: absolute; bottom: 150px; left: 0; width: 100%; 
-            padding: 0 25px; box-sizing: border-box; z-index: 10; 
-        }
-        .ai-msg-box {
-            background: rgba(0, 0, 0, 0.2); padding: 10px 15px; border-radius: 12px;
-            display: inline-block; max-width: 90%;
-        }
-        .ai-message { font-size: 22px; color: #ffffff; line-height: 1.4; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-        .ai-name { color: #9c8fff; margin-right: 8px; font-weight: bold; }
-
-        /* 说话按钮区域 */
-        .controls {
-            position: absolute; bottom: 40px; left: 0; width: 100%;
-            display: flex; flex-direction: column; align-items: center; z-index: 20;
-        }
-        .talk-btn {
-            width: 80px; height: 80px; background: #7d60f5; 
-            border-radius: 50%; border: 4px solid rgba(255,255,255,0.2);
-            box-shadow: 0 0 20px rgba(125, 96, 245, 0.6);
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.2s;
-            -webkit-user-select: none; /* 防止长按弹出菜单 */
-        }
-        .talk-btn:active { transform: scale(0.9); background: #5a44cc; box-shadow: 0 0 30px #7d60f5; }
-        .talk-hint { color: rgba(255,255,255,0.7); font-size: 14px; margin-top: 10px; }
-
-        /* 启动遮罩 */
+        .top-bar { position: absolute; top: 50px; left: 25px; z-index: 10; }
+        .icon-power { width: 44px; height: 44px; background: rgba(0,0,0,0.4); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid #fff; }
+        .bottom-overlay { position: absolute; bottom: 150px; left: 0; width: 100%; padding: 0 20px; z-index: 10; }
+        .ai-msg-box { background: rgba(0,0,0,0.5); padding: 12px; border-radius: 12px; color: #fff; font-size: 20px; }
+        .ai-name { color: #9c8fff; font-weight: bold; margin-right: 8px; }
+        .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 20; }
+        .talk-btn { width: 80px; height: 80px; background: #7d60f5; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 4px solid #fff; }
+        .talk-hint { color: #fff; margin-top: 10px; font-size: 14px; }
         #start-mask { position: fixed; inset: 0; background: #000; z-index: 100; display: flex; align-items: center; justify-content: center; }
-        .start-btn { background: #7d60f5; color: white; border: none; padding: 16px 50px; border-radius: 40px; font-size: 20px; font-weight: bold; }
+        .start-btn { background: #7d60f5; color: #fff; border: none; padding: 15px 40px; border-radius: 30px; font-size: 18px; }
     </style>
 </head>
 <body>
     <video id="local-video" autoplay playsinline muted></video>
+    <!-- 用于播放 AI 声音的隐藏容器 -->
+    <div id="remote-player" style="display:none"></div>
 
-    <!-- 停止按钮 -->
-    <div class="top-bar" onclick="stopCall()">
-        <div class="icon-power">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
-                <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path>
-            </svg>
-        </div>
+    <div class="top-bar" onclick="location.reload()">
+        <div class="icon-power"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg></div>
     </div>
 
-    <!-- 字幕反馈 -->
     <div class="bottom-overlay">
-        <div class="ai-msg-box">
-            <span class="ai-name">豆包:</span>
-            <span id="ai-text" class="ai-message">连接成功！按住下方按钮开始说话...</span>
-        </div>
+        <div class="ai-msg-box"><span class="ai-name">豆包:</span><span id="ai-text">请按住说话...</span></div>
     </div>
 
-    <!-- 控制区域 -->
     <div class="controls" id="controls-ui" style="display:none;">
-        <div class="talk-btn" id="talk-trigger">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"></path>
-                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path>
-            </svg>
-        </div>
+        <div class="talk-btn" id="talk-trigger"><svg width="32" height="32" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg></div>
         <div class="talk-hint" id="talk-hint">按住说话</div>
     </div>
 
-    <div id="start-mask">
-        <button class="start-btn" onclick="initCall()">开启豆包视频通话</button>
-    </div>
+    <div id="start-mask"><button class="start-btn" onclick="initCall()">开启通话</button></div>
 
     <script>
         const CONFIG = {
@@ -96,7 +48,7 @@
             token: "001694e815bd68e9101747f2d3bRADHACIF1oVOaVbAV2kEAHp3ZncKAG1hcmNlbF8wMDEGAAAAVsBXaQEAVsBXaQIAVsBXaQMAVsBXaQQAVsBXaQUAVsBXaSAAI2GnIyGyFhSffyVHHr+SEoKL6rpC+uDe+k621Fvl964="
         };
 
-        let rtcEngine, localStream;
+        let rtc, localStream;
 
         async function initCall() {
             const sdk = window.VolcEngineRTC || window.VERTC;
@@ -104,71 +56,39 @@
             document.getElementById('controls-ui').style.display = 'flex';
 
             try {
-                rtcEngine = sdk.createEngine(CONFIG.appId);
+                rtc = sdk.createEngine(CONFIG.appId);
                 
-                // 监听 AI 字幕
-                rtcEngine.on('onStreamMessageReceived', (uid, streamId, message) => {
-                    document.getElementById('ai-text').innerText = new TextDecoder().decode(message);
+                // 【核心】收听 AI 的声音
+                rtc.on('onUserPublishStream', async (uid, type) => {
+                    if (type === sdk.MediaType.AUDIO || type === sdk.MediaType.AUDIO_AND_VIDEO) {
+                        const { player } = await rtc.subscribeStream(uid, sdk.MediaType.AUDIO);
+                        player.play('remote-player');
+                    }
                 });
 
-                // 获取流
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' }, 
-                    audio: true 
+                // 接收 AI 的字幕
+                rtc.on('onStreamMessageReceived', (uid, sid, msg) => {
+                    document.getElementById('ai-text').innerText = new TextDecoder().decode(msg);
                 });
+
+                localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('local-video').srcObject = localStream;
 
-                await rtcEngine.joinRoom(CONFIG.token, CONFIG.roomId, { userId: CONFIG.userId });
-                
-                // 发布流 (默认先静音音频)
-                await rtcEngine.publishStream(sdk.MediaType.AUDIO_AND_VIDEO);
-                rtcEngine.muteLocalAudioStream(true);
+                await rtc.joinRoom(CONFIG.token, CONFIG.roomId, { userId: CONFIG.userId });
+                await rtc.publishStream(sdk.MediaType.AUDIO_AND_VIDEO);
+                rtc.muteLocalAudioStream(true); // 默认禁音
 
                 setupTalkButton();
-
-            } catch (e) {
-                alert("启动失败: " + e.message);
-            }
+            } catch (e) { alert(e.message); }
         }
 
-        // 处理“按住说话”逻辑
         function setupTalkButton() {
             const btn = document.getElementById('talk-trigger');
-            const hint = document.getElementById('talk-hint');
-
-            const startTalking = () => {
-                rtcEngine.muteLocalAudioStream(false);
-                hint.innerText = "正在倾听...";
-                hint.style.color = "#7d60f5";
-            };
-
-            const stopTalking = () => {
-                rtcEngine.muteLocalAudioStream(true);
-                hint.innerText = "按住说话";
-                hint.style.color = "rgba(255,255,255,0.7)";
-            };
-
-            // 绑定触摸事件
+            const startTalking = () => { rtc.muteLocalAudioStream(false); document.getElementById('talk-hint').innerText = "说话中..."; };
+            const stopTalking = () => { rtc.muteLocalAudioStream(true); document.getElementById('talk-hint').innerText = "按住说话"; };
             btn.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
             btn.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
-            // 兼容鼠标调试
-            btn.addEventListener('mousedown', startTalking);
-            btn.addEventListener('mouseup', stopTalking);
-        }
-
-        // 停止通话逻辑
-        async function stopCall() {
-            if (confirm("确定要结束通话吗？")) {
-                if (rtcEngine) {
-                    await rtcEngine.leaveRoom();
-                    const sdk = window.VolcEngineRTC || window.VERTC;
-                    sdk.destroyEngine(rtcEngine);
-                }
-                if (localStream) {
-                    localStream.getTracks().forEach(t => t.stop());
-                }
-                location.reload(); // 重置状态
-            }
+            btn.addEventListener('mousedown', startTalking); btn.addEventListener('mouseup', stopTalking);
         }
     </script>
 </body>
