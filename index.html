@@ -3,106 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频理解 - Analyser</title>
+    <title>豆包视频理解 - 语音版</title>
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-        
-        /* 全屏视频预览 */
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        canvas { display: none; } /* 隐藏用于抽帧的画布 */
-
-        /* 顶部电源键 */
-        .top-bar { position: absolute; top: 50px; left: 25px; z-index: 100; }
-        .power-btn { width: 44px; height: 44px; background: rgba(255,255,255,0.2); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; }
-
-        /* 底部字幕反馈 */
-        .bottom-overlay { position: absolute; bottom: 150px; left: 0; width: 100%; padding: 0 30px; z-index: 50; }
-        .ai-text-box { background: rgba(0, 0, 0, 0.4); padding: 15px; border-radius: 15px; color: #fff; font-size: 22px; line-height: 1.4; text-shadow: 0 2px 4px #000; display: inline-block; max-width: 90%; }
-        .ai-name { color: #a29bfe; font-weight: bold; margin-right: 10px; }
-
-        /* 说话按钮 */
+        canvas { display: none; }
+        .bottom-overlay { position: absolute; bottom: 140px; left: 0; width: 100%; padding: 0 25px; z-index: 50; }
+        .ai-text-box { background: rgba(0, 0, 0, 0.6); padding: 12px; border-radius: 12px; color: #fff; font-size: 20px; line-height: 1.4; display: inline-block; width: 100%; border: 1px solid rgba(255,255,255,0.2); }
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 85px; height: 85px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; box-shadow: 0 0 20px rgba(125,96,245,0.5); display: flex; align-items: center; justify-content: center; }
-        .talk-btn.active { background: #ff4d4f; transform: scale(1.1); }
-        .talk-hint { color: #fff; margin-top: 12px; font-size: 14px; font-weight: bold; }
-        
-        #start-screen { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; align-items: center; justify-content: center; }
-        .start-btn { background: #7d60f5; color: #fff; border: none; padding: 15px 45px; border-radius: 30px; font-size: 18px; font-weight: bold; }
+        .talk-btn { width: 80px; height: 80px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .talk-btn.listening { background: #ff4d4f; transform: scale(1.1); box-shadow: 0 0 20px #ff4d4f; }
+        .hint { color: #fff; margin-top: 10px; font-size: 14px; font-weight: bold; text-shadow: 0 1px 2px #000; }
+        #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; }
+        input { padding: 10px; width: 80%; margin-bottom: 20px; border-radius: 5px; border: none; }
     </style>
 </head>
 <body>
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
 
-    <div class="top-bar" onclick="location.reload()">
-        <div class="power-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg></div>
-    </div>
-
     <div class="bottom-overlay">
         <div class="ai-text-box">
-            <span class="ai-name">豆包:</span><span id="ai-text">正在观察画面...</span>
+            <span style="color:#9c8fff;font-weight:bold">豆包:</span>
+            <span id="ai-text">正在初始化，请点击下方按钮...</span>
         </div>
     </div>
 
     <div class="controls">
-        <div class="talk-btn" id="talk-btn" onclick="askQuestion()">
+        <div class="talk-btn" id="talk-btn">
             <svg width="35" height="35" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
         </div>
-        <div class="talk-hint">点击对画面提问</div>
+        <div class="hint" id="hint-text">点击开始说话</div>
     </div>
 
-    <div id="start-screen"><button class="start-btn" onclick="startApp()">开始体验视频理解</button></div>
+    <div id="setup-mask">
+        <h2>最后一步：配置连接</h2>
+        <p>请输入你的 ngrok 转发地址：</p>
+        <input type="text" id="backend-url" placeholder="https://xxxx.ngrok-free.app">
+        <button style="padding:15px 40px; border-radius:30px; background:#7d60f5; color:white; border:none;" onclick="saveAndStart()">进入通话界面</button>
+    </div>
 
     <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
+        let BACKEND_URL = "";
         const aiText = document.getElementById('ai-text');
-        
-        // 【注意】这里请填入你运行 Python server.py 的电脑 IP 地址
-        const BACKEND_URL = "http://" + window.location.hostname + ":5000";
+        const btn = document.getElementById('talk-btn');
+        const hint = document.getElementById('hint-text');
 
-        async function startApp() {
-            document.getElementById('start-screen').style.display = 'none';
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'environment' }, 
-                audio: true 
-            });
-            video.srcObject = stream;
-            
-            // 每 1.5 秒自动抽帧发给后端记忆
-            setInterval(captureAndSend, 1500);
+        function saveAndStart() {
+            BACKEND_URL = document.getElementById('backend-url').value;
+            if(!BACKEND_URL) return alert("请输入地址");
+            document.getElementById('setup-mask').style.display = 'none';
+            startApp();
         }
 
-        function captureAndSend(userQuery = null) {
+        async function startApp() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+            document.getElementById('video').srcObject = stream;
+            aiText.innerText = "豆包正在通过摄像头看你，请对我提问吧。";
+            
+            // 自动感知循环
+            setInterval(() => { captureAndSend(null); }, 3000);
+
+            // 语音识别初始化
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) return alert("当前浏览器不支持语音输入，请使用 Chrome 或 Safari");
+            
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'zh-CN';
+
+            btn.onclick = () => {
+                recognition.start();
+                btn.classList.add('listening');
+                hint.innerText = "正在倾听...";
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                aiText.innerText = `你说："${transcript}" - 豆包正在思考...`;
+                captureAndSend(transcript);
+            };
+
+            recognition.onend = () => {
+                btn.classList.remove('listening');
+                hint.innerText = "点击说话";
+            };
+        }
+
+        function captureAndSend(userText) {
+            const canvas = document.getElementById('canvas');
+            const video = document.getElementById('video');
             const context = canvas.getContext('2d');
             canvas.width = 640;
             canvas.height = 480;
             context.drawImage(video, 0, 0, 640, 480);
-            
-            const base64Image = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
-            
+            const base64Image = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+
             fetch(`${BACKEND_URL}/bot/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    image: base64Image,
-                    text: userQuery
-                })
+                body: JSON.stringify({ image: base64Image, text: userText })
             })
             .then(res => res.json())
             .then(data => {
-                if(data.text) aiText.innerText = data.text;
-            });
-        }
-
-        function askQuestion() {
-            // 为演示简化：点一下按钮，弹窗输入想问豆包的话
-            const q = prompt("你想问豆包关于画面的什么内容？", "帮我算算BMI");
-            if(q) {
-                aiText.innerText = "思考中...";
-                captureAndSend(q);
-            }
+                if (data.text) aiText.innerText = data.text;
+            })
+            .catch(err => console.error("连接后端失败", err));
         }
     </script>
 </body>
