@@ -3,145 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包通话-自适应轮巡版</title>
-    <script src="volcengine-rtc-sdk.js"></script>
+    <title>豆包视频理解 - Analyser</title>
     <style>
-        * { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-        #local-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        #debug-log { position: absolute; top: 10px; left: 10px; right: 10px; background: rgba(0,0,0,0.85); color: #0f0; padding: 12px; font-size: 11px; z-index: 1000; border-radius: 8px; max-height: 180px; overflow-y: auto; border: 1px solid #444; line-height: 1.6; }
-        .bottom-overlay { position: absolute; bottom: 180px; left: 0; width: 100%; padding: 0 20px; z-index: 50; box-sizing: border-box; }
-        .ai-msg-box { background: rgba(0,0,0,0.75); padding: 15px; border-radius: 12px; color: #fff; font-size: 18px; border: 1px solid rgba(255,255,255,0.2); }
+        
+        /* 全屏视频预览 */
+        #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        canvas { display: none; } /* 隐藏用于抽帧的画布 */
+
+        /* 顶部电源键 */
+        .top-bar { position: absolute; top: 50px; left: 25px; z-index: 100; }
+        .power-btn { width: 44px; height: 44px; background: rgba(255,255,255,0.2); border-radius: 50%; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center; }
+
+        /* 底部字幕反馈 */
+        .bottom-overlay { position: absolute; bottom: 150px; left: 0; width: 100%; padding: 0 30px; z-index: 50; }
+        .ai-text-box { background: rgba(0, 0, 0, 0.4); padding: 15px; border-radius: 15px; color: #fff; font-size: 22px; line-height: 1.4; text-shadow: 0 2px 4px #000; display: inline-block; max-width: 90%; }
+        .ai-name { color: #a29bfe; font-weight: bold; margin-right: 10px; }
+
+        /* 说话按钮 */
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 90px; height: 90px; background: #7d60f5; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 4px solid #fff; transition: all 0.2s; cursor: pointer; }
-        .talk-btn.active { background: #ff4d4f; box-shadow: 0 0 30px #ff4d4f; }
-        #start-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; align-items: center; justify-content: center; }
-        .start-btn { background: #7d60f5; color: #fff; border: none; padding: 18px 50px; border-radius: 35px; font-size: 20px; font-weight: bold; }
+        .talk-btn { width: 85px; height: 85px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; box-shadow: 0 0 20px rgba(125,96,245,0.5); display: flex; align-items: center; justify-content: center; }
+        .talk-btn.active { background: #ff4d4f; transform: scale(1.1); }
+        .talk-hint { color: #fff; margin-top: 12px; font-size: 14px; font-weight: bold; }
+        
+        #start-screen { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+        .start-btn { background: #7d60f5; color: #fff; border: none; padding: 15px 45px; border-radius: 30px; font-size: 18px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="debug-log">🚀 多套配置自适应启动模式...</div>
-    <video id="local-video" autoplay playsinline muted></video>
-    <div id="remote-audio" style="display:none"></div>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div class="top-bar" onclick="location.reload()">
+        <div class="power-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"></path></svg></div>
+    </div>
 
     <div class="bottom-overlay">
-        <div class="ai-msg-box">
-            <span style="color:#9c8fff;font-weight:bold">豆包:</span> <span id="ai-text">正在自动尝试最佳配置...</span>
+        <div class="ai-text-box">
+            <span class="ai-name">豆包:</span><span id="ai-text">正在观察画面...</span>
         </div>
     </div>
 
-    <div class="controls" id="controls-ui" style="display:none;">
-        <button class="talk-btn" id="talk-trigger" onclick="toggleTalk()">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
-        </button>
-        <p id="talk-hint" style="color:white;margin-top:10px;font-size:14px;font-weight:bold">点击说话</p>
+    <div class="controls">
+        <div class="talk-btn" id="talk-btn" onclick="askQuestion()">
+            <svg width="35" height="35" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
+        </div>
+        <div class="talk-hint">点击对画面提问</div>
     </div>
 
-    <div id="start-mask"><button class="start-btn" onclick="runAdaptiveInit()">开启全自动联调</button></div>
+    <div id="start-screen"><button class="start-btn" onclick="startApp()">开始体验视频理解</button></div>
 
     <script>
-        // 配置矩阵：如果第一套不行，自动换第二套
-        const CONFIG_MATRIX = [
-            {
-                name: "方案 A (d3b项目)",
-                appId: "694e815bd68e9101747f2d3b",
-                roomId: "marcel20251227",
-                userId: "marcel20251227",
-                token: "001694e815bd68e9101747f2d3bUgCHHWoF/bJOaX3tV2kOAG1hcmNlbDIwMjUxMjI3DgBtYXJjZWwyMDI1MTIyNwYAAAB97VdpAQB97VdpAgB97VdpAwB97VdpBAB97VdpBQB97VdpIADZIoA9w+XZ1o1GXJ4JC4lyo3axb22ov4oDlm4ZGZ3NRg=="
-            },
-            {
-                name: "方案 B (f9e项目)",
-                appId: "694e817400efda0175310f9e",
-                roomId: "marcelroom",
-                userId: "marceluser",
-                token: "001694e817400efda0175310f9eSgCWU98FmrdOaRryV2kKAG1hcmNlbHJvb20KAG1hcmNlbHVzZXIGAAAAGvJXaQEAGvJXaQIAGvJXaQMAGvJXaQQAGvJXaQUAGvJXaSAAC94o5eNHsT4oSzS5/CFy5ZM3HBe9pDCB4bXKGGSkF+g="
-            }
-        ];
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const aiText = document.getElementById('ai-text');
+        
+        // 【注意】这里请填入你运行 Python server.py 的电脑 IP 地址
+        const BACKEND_URL = "http://" + window.location.hostname + ":5000";
 
-        let rtcEngine, currentConfigIndex = 0, isTalking = false;
-        function log(msg, color="#0f0") { 
-            const d = document.getElementById('debug-log');
-            d.innerHTML += `<br><span style="color:${color}">> ${msg}</span>`; 
-            d.scrollTop = d.scrollHeight;
+        async function startApp() {
+            document.getElementById('start-screen').style.display = 'none';
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment' }, 
+                audio: true 
+            });
+            video.srcObject = stream;
+            
+            // 每 1.5 秒自动抽帧发给后端记忆
+            setInterval(captureAndSend, 1500);
         }
 
-        async function runAdaptiveInit() {
-            document.getElementById('start-mask').style.display = 'none';
-            document.getElementById('controls-ui').style.display = 'flex';
+        function captureAndSend(userQuery = null) {
+            const context = canvas.getContext('2d');
+            canvas.width = 640;
+            canvas.height = 480;
+            context.drawImage(video, 0, 0, 640, 480);
             
-            // 0. 先开摄像头
-            try {
-                log("正在开启预览...");
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
-                document.getElementById('local-video').srcObject = stream;
-            } catch(e) { log("❌ 摄像头失败: " + e.message, "red"); }
-
-            tryConfig(0);
+            const base64Image = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+            
+            fetch(`${BACKEND_URL}/bot/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image: base64Image,
+                    text: userQuery
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.text) aiText.innerText = data.text;
+            });
         }
 
-        async function tryConfig(index) {
-            if (index >= CONFIG_MATRIX.length) {
-                log("❌ 所有配置均尝试失败！请检查控制台 AppID 是否已停用。", "red");
-                alert("全部失败！请确认火山引擎控制台服务状态。");
-                return;
+        function askQuestion() {
+            // 为演示简化：点一下按钮，弹窗输入想问豆包的话
+            const q = prompt("你想问豆包关于画面的什么内容？", "帮我算算BMI");
+            if(q) {
+                aiText.innerText = "思考中...";
+                captureAndSend(q);
             }
-
-            const conf = CONFIG_MATRIX[index];
-            currentConfigIndex = index;
-            log(`尝试【${conf.name}】...`, "yellow");
-
-            const sdk = window.VolcEngineRTC || window.VERTC;
-            if(rtcEngine) { try { sdk.destroyEngine(rtcEngine); } catch(e){} }
-            
-            rtcEngine = sdk.createEngine(conf.appId);
-            
-            // 设置监听
-            rtcEngine.on('onUserJoined', () => { 
-                log(`✅ 通道已建立！AI 进房成功`, "#0f0");
-                document.getElementById('ai-text').innerText = "豆包已上线，点紫色按钮聊天";
-            });
-            rtcEngine.on('onStreamMessageReceived', (uid, sid, msg) => {
-                document.getElementById('ai-text').innerText = new TextDecoder().decode(msg);
-            });
-            rtcEngine.on('onUserPublishStream', async (uid, type) => {
-                if (type === sdk.MediaType.AUDIO) {
-                    const { player } = await rtcEngine.subscribeStream(uid, sdk.MediaType.AUDIO);
-                    player.play('remote-audio');
-                }
-            });
-
-            // 核心：带超时的进房尝试
-            let hasTimedOut = false;
-            const timer = setTimeout(() => {
-                hasTimedOut = true;
-                log(`⚠️ ${conf.name} 进房超时，正在切换下个方案...`, "orange");
-                tryConfig(index + 1);
-            }, 6000);
-
-            try {
-                await rtcEngine.joinRoom(conf.token, conf.roomId, { userId: conf.userId });
-                if(hasTimedOut) return;
-                clearTimeout(timer);
-                
-                await rtcEngine.publishStream(sdk.MediaType.AUDIO_AND_VIDEO);
-                rtcEngine.muteLocalAudioStream(true);
-                log(`🎉 ${conf.name} 进房成功！请启动 Mac 上的 Python。`, "#0f0");
-                document.getElementById('ai-text').innerText = "连接成功！请去电脑上运行 Python";
-            } catch (err) {
-                if(hasTimedOut) return;
-                clearTimeout(timer);
-                log(`❌ ${conf.name} 报错: ${err.message}`, "red");
-                tryConfig(index + 1);
-            }
-        }
-
-        function toggleTalk() {
-            if (!rtcEngine) return;
-            isTalking = !isTalking;
-            rtcEngine.muteLocalAudioStream(!isTalking);
-            document.getElementById('talk-trigger').classList.toggle('active', isTalking);
-            document.getElementById('talk-hint').innerText = isTalking ? "正在听..." : "点击说话";
-            log(isTalking ? "🎤 麦克风已开启" : "🔇 麦克风已关闭");
         }
     </script>
 </body>
