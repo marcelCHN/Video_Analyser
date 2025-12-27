@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频理解 - 语音版</title>
+    <title>豆包视频理解</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         canvas { display: none; }
         .bottom-overlay { position: absolute; bottom: 140px; left: 0; width: 100%; padding: 0 25px; z-index: 50; }
-        .ai-text-box { background: rgba(0, 0, 0, 0.6); padding: 12px; border-radius: 12px; color: #fff; font-size: 20px; line-height: 1.4; display: inline-block; width: 100%; border: 1px solid rgba(255,255,255,0.2); }
+        .ai-text-box { background: rgba(0, 0, 0, 0.65); padding: 15px; border-radius: 12px; color: #fff; font-size: 20px; line-height: 1.4; display: inline-block; width: 100%; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(10px); }
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 80px; height: 80px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
-        .talk-btn.listening { background: #ff4d4f; transform: scale(1.1); box-shadow: 0 0 20px #ff4d4f; }
+        .talk-btn { width: 85px; height: 85px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.2s; }
+        .talk-btn.listening { background: #ff4d4f; transform: scale(1.1); box-shadow: 0 0 25px #ff4d4f; }
         .hint { color: #fff; margin-top: 10px; font-size: 14px; font-weight: bold; text-shadow: 0 1px 2px #000; }
-        #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; }
-        input { padding: 10px; width: 80%; margin-bottom: 20px; border-radius: 5px; border: none; }
+        #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 20px; text-align: center; }
+        input { padding: 12px; width: 80%; margin: 20px 0; border-radius: 8px; border: none; font-size: 16px; }
     </style>
 </head>
 <body>
@@ -25,7 +25,7 @@
     <div class="bottom-overlay">
         <div class="ai-text-box">
             <span style="color:#9c8fff;font-weight:bold">豆包:</span>
-            <span id="ai-text">正在初始化，请点击下方按钮...</span>
+            <span id="ai-text">请在下方填入后端连接地址...</span>
         </div>
     </div>
 
@@ -36,11 +36,12 @@
         <div class="hint" id="hint-text">点击开始说话</div>
     </div>
 
+    <!-- 连接配置遮罩 -->
     <div id="setup-mask">
-        <h2>最后一步：配置连接</h2>
-        <p>请输入你的 ngrok 转发地址：</p>
-        <input type="text" id="backend-url" placeholder="https://xxxx.ngrok-free.app">
-        <button style="padding:15px 40px; border-radius:30px; background:#7d60f5; color:white; border:none;" onclick="saveAndStart()">进入通话界面</button>
+        <h2>连接豆包大脑</h2>
+        <p style="color:#aaa">请输入 Mac 终端 ssh 隧道生成的 https 地址</p>
+        <input type="text" id="backend-url" placeholder="https://xxxx.lhr.life">
+        <button style="padding:15px 50px; border-radius:30px; background:#7d60f5; color:white; border:none; font-weight:bold;" onclick="connect()">确认连接</button>
     </div>
 
     <script>
@@ -49,9 +50,9 @@
         const btn = document.getElementById('talk-btn');
         const hint = document.getElementById('hint-text');
 
-        function saveAndStart() {
-            BACKEND_URL = document.getElementById('backend-url').value;
-            if(!BACKEND_URL) return alert("请输入地址");
+        function connect() {
+            BACKEND_URL = document.getElementById('backend-url').value.replace(/\/$/, "");
+            if(!BACKEND_URL.startsWith("https")) return alert("必须是 https 开头的地址");
             document.getElementById('setup-mask').style.display = 'none';
             startApp();
         }
@@ -59,14 +60,14 @@
         async function startApp() {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
             document.getElementById('video').srcObject = stream;
-            aiText.innerText = "豆包正在通过摄像头看你，请对我提问吧。";
+            aiText.innerText = "豆包正在观察你的画面，随时可以对我提问。";
             
-            // 自动感知循环
-            setInterval(() => { captureAndSend(null); }, 3000);
+            // 每 4 秒自动“看”一眼，保持记忆
+            setInterval(() => { captureAndSend(null); }, 4000);
 
-            // 语音识别初始化
+            // 语音识别
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) return alert("当前浏览器不支持语音输入，请使用 Chrome 或 Safari");
+            if (!SpeechRecognition) return alert("浏览器版本过低，不支持语音");
             
             const recognition = new SpeechRecognition();
             recognition.lang = 'zh-CN';
@@ -79,7 +80,7 @@
 
             recognition.onresult = (event) => {
                 const transcript = event.results[0][0].transcript;
-                aiText.innerText = `你说："${transcript}" - 豆包正在思考...`;
+                aiText.innerText = `你说："${transcript}"...`;
                 captureAndSend(transcript);
             };
 
@@ -93,10 +94,10 @@
             const canvas = document.getElementById('canvas');
             const video = document.getElementById('video');
             const context = canvas.getContext('2d');
-            canvas.width = 640;
-            canvas.height = 480;
-            context.drawImage(video, 0, 0, 640, 480);
-            const base64Image = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+            canvas.width = 400; // 降低分辨率减少流量
+            canvas.height = 300;
+            context.drawImage(video, 0, 0, 400, 300);
+            const base64Image = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
 
             fetch(`${BACKEND_URL}/bot/chat`, {
                 method: 'POST',
@@ -107,7 +108,7 @@
             .then(data => {
                 if (data.text) aiText.innerText = data.text;
             })
-            .catch(err => console.error("连接后端失败", err));
+            .catch(err => console.error("连接失败", err));
         }
     </script>
 </body>
