@@ -3,33 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频通话 - 调试版</title>
+    <title>豆包视频理解 - 语音增强版</title>
     <script src="volcengine-rtc-sdk.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         canvas { display: none; }
-        #debug-log { position: absolute; top: 10px; left: 10px; right: 10px; background: rgba(0,0,0,0.8); color: #0f0; padding: 10px; font-size: 11px; z-index: 1000; border-radius: 8px; max-height: 120px; overflow-y: auto; pointer-events: none; }
-        #chat-container { position: absolute; top: 120px; left: 0; width: 100%; height: 35%; padding: 20px; overflow-y: auto; z-index: 50; display: flex; flex-direction: column; gap: 10px; }
-        .msg { max-width: 85%; padding: 12px 16px; border-radius: 18px; font-size: 16px; color: #fff; line-height: 1.4; }
-        .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; }
-        .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.2); border-bottom-left-radius: 4px; backdrop-filter: blur(10px); }
-        
-        /* 语音识别实时文字显示区 */
-        #speech-preview { position: absolute; bottom: 150px; width: 100%; text-align: center; z-index: 100; padding: 0 20px; }
-        #speech-text { background: white; color: black; padding: 8px 16px; border-radius: 20px; font-weight: bold; display: none; font-size: 18px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
 
+        /* 顶部状态提示 */
+        #status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.6); color: #0f0; padding: 8px 12px; font-size: 12px; z-index: 1000; border-radius: 8px; pointer-events: none; border: 1px solid #333; }
+
+        /* 气泡对话容器 */
+        #chat-container { position: absolute; top: 70px; left: 0; width: 100%; height: 45%; padding: 20px; overflow-y: auto; z-index: 50; display: flex; flex-direction: column; gap: 10px; }
+        .msg { max-width: 85%; padding: 12px 16px; border-radius: 18px; font-size: 16px; line-height: 1.4; color: #fff; animation: slideIn 0.2s ease; }
+        .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; }
+        .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.25); border-bottom-left-radius: 4px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 实时文字预览：让你确认手机在听 */
+        #speech-preview { position: absolute; bottom: 150px; width: 100%; text-align: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 0 2px 4px #000; z-index: 100; min-height: 24px; padding: 0 20px; }
+
+        /* 底部控制按钮 */
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 90px; height: 90px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.2s; cursor: pointer; }
-        .talk-btn.active { background: #ff4d4f; transform: scale(1.1); box-shadow: 0 0 40px #ff4d4f; }
-        
+        .talk-btn { width: 90px; height: 90px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.3s; cursor: pointer; }
+        .talk-btn.active { background: #ff4d4f; transform: scale(1.1); box-shadow: 0 0 35px #ff4d4f; animation: breathe 1.5s infinite; }
+        @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .hint { color: #fff; margin-top: 10px; font-size: 14px; font-weight: bold; text-shadow: 0 1px 3px #000; }
+
+        /* 初始遮罩层 */
         #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 30px; text-align: center; }
+        .go-btn { padding: 16px 70px; border-radius: 40px; background: #7d60f5; color: white; border: none; font-weight: bold; font-size: 20px; transition: 0.2s; }
     </style>
 </head>
 <body>
-    <div id="debug-log">系统日志: 等待启动</div>
-    <div id="speech-preview"><span id="speech-text">正在听...</span></div>
+    <div id="status-bar">系统检测中...</div>
+    <div id="speech-preview"></div>
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
     <div id="chat-container"></div>
@@ -38,87 +47,116 @@
         <div class="talk-btn" id="talk-btn">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
         </div>
-        <p style="color:white;margin-top:10px;font-weight:bold;text-shadow:0 1px 3px #000">点一下说，再点一下发</p>
+        <div class="hint" id="hint-text">点击开始说话</div>
     </div>
 
     <div id="setup-mask">
-        <h2 style="margin-bottom:20px">豆包视频理解</h2>
-        <button style="padding:18px 60px; border-radius:40px; background:#7d60f5; color:white; border:none; font-weight:bold; font-size:20px;" onclick="start()">开启对话</button>
-        <p style="margin-top:20px; color:#666; font-size:12px;">已锁定永久域名后端</p>
+        <h2>豆包视频理解</h2>
+        <p style="color:#888; margin-bottom:40px;">已锁定永久域名后端</p>
+        <button class="go-btn" onclick="initSystem()">立即进入</button>
     </div>
 
     <script>
+        // 锁定你的永久域名
         const BACKEND_URL = "https://rubie-intersonant-serviceably.ngrok-free.dev";
-        let isListening = false, recognition = null, finalTxt = "";
-        const debug = document.getElementById('debug-log'), liveTxt = document.getElementById('speech-text'), chatBox = document.getElementById('chat-container'), btn = document.getElementById('talk-btn');
+        
+        let isListening = false;
+        let recognition = null;
+        let currentTranscript = "";
 
-        function log(msg) { debug.innerText += "\n> " + msg; debug.scrollTop = debug.scrollHeight; }
+        const statusBar = document.getElementById('status-bar');
+        const speechPreview = document.getElementById('speech-preview');
+        const chatBox = document.getElementById('chat-container');
+        const talkBtn = document.getElementById('talk-btn');
+        const hintText = document.getElementById('hint-text');
 
-        async function start() {
-            document.getElementById('setup-mask').style.display = 'none';
+        // 1. 系统开启：请求权限 + 激活声音
+        async function initSystem() {
+            // 预激活声音播放
             try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e) {}
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('video').srcObject = stream;
-                log("✅ 权限已获取");
-                initRecognition();
-                // 启动视觉自动感知
-                setInterval(() => { if(!isListening) captureAndSend(null); }, 4000);
-            } catch (err) { alert("需要摄像头权限"); }
+                document.getElementById('setup-mask').style.display = 'none';
+                startApp();
+            } catch (e) {
+                alert("请在系统设置中允许摄像头和麦克风权限！");
+            }
         }
 
-        function initRecognition() {
+        // 2. 主逻辑
+        function startApp() {
+            statusBar.innerText = "✅ 已就绪：豆包正在观察你";
+
+            // 定时发送背景画面（每 4 秒）
+            setInterval(() => { if(!isListening) captureAndSend(null); }, 4000);
+
+            // 语音识别初始化
             const SpeechSDK = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechSDK) { log("❌ 浏览器不支持语音识别"); return; }
+            if (!SpeechSDK) {
+                statusBar.innerText = "❌ 浏览器不支持语音识别";
+                return;
+            }
+            
             recognition = new SpeechSDK();
             recognition.lang = 'zh-CN';
-            recognition.interimResults = true;
-            recognition.continuous = true;
+            recognition.interimResults = true; // 开启中间结果显示
+            recognition.continuous = false;    // 设为单次识别模式，提高手机端稳定性
+
+            // 按钮逻辑：手动开关
+            talkBtn.onclick = () => {
+                if (!isListening) {
+                    currentTranscript = "";
+                    speechPreview.innerText = "正在倾听...";
+                    try {
+                        recognition.start();
+                    } catch(e) { 
+                        recognition.stop(); 
+                        setTimeout(() => recognition.start(), 200);
+                    }
+                } else {
+                    recognition.stop(); // 触发 onresult 和 onend
+                }
+            };
 
             recognition.onstart = () => {
                 isListening = true;
-                btn.classList.add('active');
-                liveTxt.style.display = "inline-block";
-                liveTxt.innerText = "正在倾听...";
-                log("🎤 麦克风已开启");
+                talkBtn.classList.add('active');
+                hintText.innerText = "说完再次点击";
             };
 
             recognition.onresult = (event) => {
-                let current = "";
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    current += event.results[i][0].transcript;
+                let text = "";
+                for (let i = 0; i < event.results.length; i++) {
+                    text += event.results[i][0].transcript;
                 }
-                finalTxt = current;
-                liveTxt.innerText = current || "正在倾听...";
+                currentTranscript = text;
+                speechPreview.innerText = currentTranscript; // 实时显示你说的字
             };
 
-            recognition.onerror = (e) => { log("⚠️ 识别出错: " + e.error); stopAndSend(); };
-            recognition.onend = () => { if(isListening) stopAndSend(); };
+            recognition.onerror = (e) => {
+                console.error("识别错误:", e.error);
+                statusBar.innerText = "⚠️ 识别中断: " + e.error;
+                resetTalkUI();
+            };
 
-            btn.onclick = () => {
-                if (!isListening) {
-                    finalTxt = "";
-                    try { recognition.start(); } catch(e) { log("重置识别器..."); recognition.stop(); }
-                } else {
-                    stopAndSend();
+            recognition.onend = () => {
+                // 核心：当识别结束（手动点停止或自动超时）
+                const finalSpeech = currentTranscript;
+                if (finalSpeech && isListening) {
+                    addMessage('user', finalSpeech);
+                    captureAndSend(finalSpeech);
                 }
+                resetTalkUI();
             };
         }
 
-        function stopAndSend() {
+        function resetTalkUI() {
             isListening = false;
-            btn.classList.remove('active');
-            liveTxt.style.display = "none";
-            if (recognition) try { recognition.stop(); } catch(e) {}
-            
-            if (finalTxt) {
-                log("🚀 发送提问: " + finalTxt);
-                addMessage('user', finalTxt);
-                captureAndSend(finalTxt);
-                finalTxt = "";
-            } else {
-                log("⚠️ 未检测到有效文字");
-            }
+            talkBtn.classList.remove('active');
+            hintText.innerText = "点击开始说话";
+            speechPreview.innerText = "";
         }
 
         function addMessage(role, text) {
@@ -132,10 +170,10 @@
 
         function speak(text) {
             window.speechSynthesis.cancel();
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = 'zh-CN';
-            u.rate = 1.1;
-            window.speechSynthesis.speak(u);
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-CN';
+            utterance.rate = 1.1;
+            window.speechSynthesis.speak(utterance);
         }
 
         function captureAndSend(userText) {
@@ -143,18 +181,18 @@
             const context = canvas.getContext('2d');
             canvas.width = 400; canvas.height = 300;
             context.drawImage(video, 0, 0, 400, 300);
-            const img = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
+            const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
 
             fetch(`${BACKEND_URL}/bot/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: img, text: userText })
+                body: JSON.stringify({ image: base64, text: userText })
             })
             .then(res => res.json())
             .then(data => {
                 if (data.text) addMessage('ai', data.text);
             })
-            .catch(err => { log("❌ 后端连接断开"); });
+            .catch(err => { statusBar.innerText = "❌ 无法连接后端"; });
         }
     </script>
 </body>
