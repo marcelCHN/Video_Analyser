@@ -3,51 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频理解 - 语音增强版</title>
+    <title>豆包通话 - 按住说话版</title>
     <script src="volcengine-rtc-sdk.js"></script>
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        /* 核心：禁用手机长按弹出菜单和系统手势 */
+        * { 
+            box-sizing: border-box; 
+            -webkit-tap-highlight-color: transparent; 
+            outline: none;
+            -webkit-touch-callout: none; /* 禁用系统长按菜单 */
+            -webkit-user-select: none;   /* 禁用选择 */
+            user-select: none;
+        }
+        
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         canvas { display: none; }
 
         /* 顶部状态提示 */
-        #status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.6); color: #0f0; padding: 8px 12px; font-size: 12px; z-index: 1000; border-radius: 8px; pointer-events: none; border: 1px solid #333; }
+        #debug-info { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.6); color: #0f0; padding: 8px 12px; font-size: 11px; z-index: 1000; border-radius: 8px; pointer-events: none; border: 1px solid #333; }
 
-        /* 气泡对话容器 */
+        /* 对话气泡容器 */
         #chat-container { position: absolute; top: 70px; left: 0; width: 100%; height: 45%; padding: 20px; overflow-y: auto; z-index: 50; display: flex; flex-direction: column; gap: 10px; }
         .msg { max-width: 85%; padding: 12px 16px; border-radius: 18px; font-size: 16px; line-height: 1.4; color: #fff; animation: slideIn 0.2s ease; }
         .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; }
         .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.25); border-bottom-left-radius: 4px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
         @keyframes slideIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* 实时文字预览：让你确认手机在听 */
-        #speech-preview { position: absolute; bottom: 150px; width: 100%; text-align: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 0 2px 4px #000; z-index: 100; min-height: 24px; padding: 0 20px; }
+        /* 实时文字预览 */
+        #speech-preview { position: absolute; bottom: 150px; width: 100%; text-align: center; color: white; font-weight: bold; font-size: 18px; text-shadow: 0 2px 4px #000; z-index: 100; min-height: 24px; padding: 0 20px; pointer-events: none; }
 
         /* 底部控制按钮 */
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 90px; height: 90px; background: #7d60f5; border-radius: 50%; border: 4px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.3s; cursor: pointer; }
-        .talk-btn.active { background: #ff4d4f; transform: scale(1.1); box-shadow: 0 0 35px #ff4d4f; animation: breathe 1.5s infinite; }
-        @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-        .hint { color: #fff; margin-top: 10px; font-size: 14px; font-weight: bold; text-shadow: 0 1px 3px #000; }
+        .talk-btn { 
+            width: 100px; height: 100px; background: #7d60f5; border-radius: 50%; 
+            border: 5px solid #fff; display: flex; align-items: center; justify-content: center; 
+            box-shadow: 0 4px 20px rgba(125,96,245,0.5); transition: 0.2s; 
+            touch-action: none; /* 极其重要：禁用浏览器对该按钮的所有默认触摸行为 */
+        }
+        .talk-btn.active { background: #ff4d4f; transform: scale(1.15); box-shadow: 0 0 35px #ff4d4f; }
+        .hint { color: #fff; margin-top: 12px; font-size: 15px; font-weight: bold; text-shadow: 0 1px 3px #000; }
 
         /* 初始遮罩层 */
         #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 30px; text-align: center; }
-        .go-btn { padding: 16px 70px; border-radius: 40px; background: #7d60f5; color: white; border: none; font-weight: bold; font-size: 20px; transition: 0.2s; }
+        .go-btn { padding: 18px 70px; border-radius: 40px; background: #7d60f5; color: white; border: none; font-weight: bold; font-size: 20px; }
     </style>
 </head>
 <body>
-    <div id="status-bar">系统检测中...</div>
+    <div id="debug-info">系统初始化...</div>
     <div id="speech-preview"></div>
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
     <div id="chat-container"></div>
 
     <div class="controls">
-        <div class="talk-btn" id="talk-btn">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
+        <div class="talk-btn" id="talk-btn" oncontextmenu="return false;">
+            <svg width="45" height="45" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
         </div>
-        <div class="hint" id="hint-text">点击开始说话</div>
+        <div class="hint" id="hint-text">按住 说话</div>
     </div>
 
     <div id="setup-mask">
@@ -57,106 +70,115 @@
     </div>
 
     <script>
-        // 锁定你的永久域名
         const BACKEND_URL = "https://rubie-intersonant-serviceably.ngrok-free.dev";
-        
-        let isListening = false;
+        let isHolding = false;
         let recognition = null;
-        let currentTranscript = "";
+        let finalOutput = "";
 
-        const statusBar = document.getElementById('status-bar');
-        const speechPreview = document.getElementById('speech-preview');
+        const debug = document.getElementById('debug-info');
+        const preview = document.getElementById('speech-preview');
         const chatBox = document.getElementById('chat-container');
         const talkBtn = document.getElementById('talk-btn');
         const hintText = document.getElementById('hint-text');
 
-        // 1. 系统开启：请求权限 + 激活声音
+        // 1. 初始化
         async function initSystem() {
-            // 预激活声音播放
-            try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e) {}
+            // 移动端强制激活声音通道
+            const ut = new SpeechSynthesisUtterance("系统已连接");
+            ut.volume = 0;
+            window.speechSynthesis.speak(ut);
 
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('video').srcObject = stream;
                 document.getElementById('setup-mask').style.display = 'none';
                 startApp();
-            } catch (e) {
-                alert("请在系统设置中允许摄像头和麦克风权限！");
-            }
+            } catch (e) { alert("请允许权限！"); }
         }
 
         // 2. 主逻辑
         function startApp() {
-            statusBar.innerText = "✅ 已就绪：豆包正在观察你";
-
-            // 定时发送背景画面（每 4 秒）
-            setInterval(() => { if(!isListening) captureAndSend(null); }, 4000);
+            debug.innerText = "✅ 已就绪：请按住紫色按钮说话";
 
             // 语音识别初始化
             const SpeechSDK = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechSDK) {
-                statusBar.innerText = "❌ 浏览器不支持语音识别";
-                return;
-            }
-            
-            recognition = new SpeechSDK();
-            recognition.lang = 'zh-CN';
-            recognition.interimResults = true; // 开启中间结果显示
-            recognition.continuous = false;    // 设为单次识别模式，提高手机端稳定性
+            if (SpeechSDK) {
+                recognition = new SpeechSDK();
+                recognition.lang = 'zh-CN';
+                recognition.interimResults = true;
+                recognition.continuous = true;
 
-            // 按钮逻辑：手动开关
-            talkBtn.onclick = () => {
-                if (!isListening) {
-                    currentTranscript = "";
-                    speechPreview.innerText = "正在倾听...";
-                    try {
-                        recognition.start();
-                    } catch(e) { 
-                        recognition.stop(); 
-                        setTimeout(() => recognition.start(), 200);
+                recognition.onstart = () => {
+                    talkBtn.classList.add('active');
+                    hintText.innerText = "正在倾听 (松开结束)";
+                };
+
+                recognition.onresult = (event) => {
+                    let combined = "";
+                    for (let i = 0; i < event.results.length; i++) {
+                        combined += event.results[i][0].transcript;
                     }
-                } else {
-                    recognition.stop(); // 触发 onresult 和 onend
+                    finalOutput = combined;
+                    preview.innerText = finalOutput;
+                };
+
+                recognition.onerror = (e) => {
+                    debug.innerText = "⚠️ 识别出错: " + e.error;
+                    releaseMic();
+                };
+
+                recognition.onend = () => {
+                    if (isHolding) {
+                        // 如果还在按着却意外结束了，尝试重启
+                        try { recognition.start(); } catch(e) {}
+                    }
+                };
+            }
+
+            // --- 核心：按住说话交互 (Touch & Mouse) ---
+            
+            const pressStart = (e) => {
+                if (e) e.preventDefault(); // 禁用系统默认菜单
+                if (isHolding) return;
+                isHolding = true;
+                finalOutput = "";
+                preview.innerText = "准备听你说...";
+                if (recognition) {
+                    try { recognition.start(); } catch(err) { console.log(err); }
                 }
             };
 
-            recognition.onstart = () => {
-                isListening = true;
-                talkBtn.classList.add('active');
-                hintText.innerText = "说完再次点击";
+            const pressEnd = (e) => {
+                if (e) e.preventDefault();
+                if (!isHolding) return;
+                releaseMic();
             };
 
-            recognition.onresult = (event) => {
-                let text = "";
-                for (let i = 0; i < event.results.length; i++) {
-                    text += event.results[i][0].transcript;
-                }
-                currentTranscript = text;
-                speechPreview.innerText = currentTranscript; // 实时显示你说的字
-            };
+            // 绑定手机端触碰事件
+            talkBtn.addEventListener('touchstart', pressStart, {passive: false});
+            talkBtn.addEventListener('touchend', pressEnd, {passive: false});
+            talkBtn.addEventListener('touchcancel', pressEnd, {passive: false});
 
-            recognition.onerror = (e) => {
-                console.error("识别错误:", e.error);
-                statusBar.innerText = "⚠️ 识别中断: " + e.error;
-                resetTalkUI();
-            };
+            // 兼容电脑端测试
+            talkBtn.onmousedown = pressStart;
+            talkBtn.onmouseup = pressEnd;
 
-            recognition.onend = () => {
-                // 核心：当识别结束（手动点停止或自动超时）
-                const finalSpeech = currentTranscript;
-                if (finalSpeech && isListening) {
-                    addMessage('user', finalSpeech);
-                    captureAndSend(finalSpeech);
-                }
-                resetTalkUI();
-            };
+            // 自动背景观察
+            setInterval(() => { if(!isHolding) captureAndSend(null); }, 4000);
         }
 
-        function resetTalkUI() {
-            isListening = false;
+        function releaseMic() {
+            isHolding = false;
             talkBtn.classList.remove('active');
-            hintText.innerText = "点击开始说话";
-            speechPreview.innerText = "";
+            hintText.innerText = "按住 说话";
+            if (recognition) try { recognition.stop(); } catch(e) {}
+            
+            if (finalOutput) {
+                addMessage('user', finalOutput);
+                captureAndSend(finalOutput);
+                finalOutput = "";
+            }
+            preview.innerText = "";
         }
 
         function addMessage(role, text) {
@@ -192,7 +214,7 @@
             .then(data => {
                 if (data.text) addMessage('ai', data.text);
             })
-            .catch(err => { statusBar.innerText = "❌ 无法连接后端"; });
+            .catch(err => { debug.innerText = "❌ 隧道连接异常"; });
         }
     </script>
 </body>
