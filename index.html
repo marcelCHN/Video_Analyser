@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频理解 - 终极修复版</title>
-    <script src="volcengine-rtc-sdk.js"></script>
+    <title>豆包视频理解</title>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; touch-action: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
@@ -15,14 +14,14 @@
         .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.2); border-bottom-left-radius: 4px; backdrop-filter: blur(10px); }
         #status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.6); color: #0f0; padding: 8px 12px; font-size: 11px; z-index: 1000; border-radius: 8px; pointer-events: none; }
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 95px; height: 95px; background: #7d60f5; border-radius: 50%; border: 6px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.1s; }
+        .talk-btn { width: 95px; height: 95px; background: #7d60f5; border-radius: 50%; border: 5px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.1s; }
         .talk-btn.active { background: #ff4d4f !important; transform: scale(1.15); box-shadow: 0 0 30px #ff4d4f; }
         #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; text-align: center; }
         @keyframes slide { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
-    <div id="status-bar">系统准备就绪</div>
+    <div id="status-bar">系统初始化...</div>
     <video id="video" autoplay playsinline muted></video>
     <div id="chat-container"></div>
     <div class="controls">
@@ -38,17 +37,16 @@
 
         async function init() {
             try {
-                // 激活音频权限
-                window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); // 预解锁音轨
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('video').srcObject = stream;
                 document.getElementById('setup-mask').style.display = 'none';
                 startLogic();
-            } catch (e) { alert("请在浏览器设置中开启摄像头权限"); }
+            } catch (e) { alert("权限拒绝"); }
         }
 
         function startLogic() {
-            statusBar.innerText = "✅ 豆包正在观察你";
+            statusBar.innerText = "✅ 系统已就绪";
             setInterval(() => { if(!isHolding) captureAndSend(null); }, 5000);
 
             const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -61,7 +59,7 @@
                     let combined = "";
                     for (let i = 0; i < e.results.length; i++) { combined += e.results[i][0].transcript; }
                     lastTranscript = combined;
-                    statusBar.innerText = "🎤 我在听: " + lastTranscript;
+                    statusBar.innerText = "🎤 我在听: " + combined;
                 };
             }
 
@@ -69,7 +67,7 @@
                 if(e) e.preventDefault();
                 isHolding = true; lastTranscript = "";
                 talkBtn.classList.add('active');
-                statusBar.innerText = "🎤 正在听...";
+                statusBar.innerText = "🎤 准备听你说...";
                 if(recognition) try { recognition.start(); } catch(err){}
             };
 
@@ -79,16 +77,15 @@
                 isHolding = false;
                 talkBtn.classList.remove('active');
                 
-                // 【核心修复】：延迟 300 毫秒抓取，确保文字识别完整
+                // 增加小延迟确保浏览器完成最后的转录
                 setTimeout(() => {
                     const textToSend = lastTranscript;
                     if(recognition) try { recognition.stop(); } catch(err){}
-                    
-                    if(textToSend && textToSend !== "系统准备就绪") {
+                    if(textToSend) {
                         addMessage('user', textToSend);
                         captureAndSend(textToSend);
                     }
-                    statusBar.innerText = "✅ 豆包正在观察你";
+                    statusBar.innerText = "✅ 系统就绪";
                 }, 300);
             };
 
