@@ -10,11 +10,11 @@
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         #chat-container { position: absolute; top: 70px; left: 0; width: 100%; height: 45%; padding: 20px; overflow-y: auto; z-index: 50; display: flex; flex-direction: column; gap: 12px; }
-        .msg { max-width: 85%; padding: 12px 18px; border-radius: 18px; font-size: 17px; line-height: 1.4; color: #fff; animation: slide 0.2s ease; }
+        .msg { max-width: 85%; padding: 12px 18px; border-radius: 18px; font-size: 17px; line-height: 1.4; color: #fff; animation: slideIn 0.2s ease; }
         .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; }
         .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.2); border-bottom-left-radius: 4px; backdrop-filter: blur(10px); }
         .controls { position: absolute; bottom: 40px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 95px; height: 95px; background: #7d60f5; border-radius: 50%; border: 5px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.1s; }
+        .talk-btn { width: 95px; height: 95px; background: #7d60f5; border-radius: 50%; border: 6px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(125,96,245,0.5); transition: 0.1s; }
         .talk-btn.active { background: #ff4d4f !important; transform: scale(1.15); box-shadow: 0 0 30px #ff4d4f; }
         #status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.6); color: #0f0; padding: 8px 12px; font-size: 11px; z-index: 1000; border-radius: 8px; pointer-events: none; }
         #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; text-align: center; }
@@ -33,18 +33,18 @@
 
     <script>
         const BACKEND_URL = "https://rubie-intersonant-serviceably.ngrok-free.dev";
-        let isHolding = false, recognition = null, lastTranscript = "";
+        let isHolding = false, recognition = null;
         const chatBox = document.getElementById('chat-container'), talkBtn = document.getElementById('talk-btn'), statusBar = document.getElementById('status-bar');
 
         async function init() {
             try {
-                // 激活音频通道
+                // 激活声音通道
                 window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('video').srcObject = stream;
                 document.getElementById('setup-mask').style.display = 'none';
                 startLogic();
-            } catch (e) { alert("请开启摄像头权限"); }
+            } catch (e) { alert("请允许摄像头权限"); }
         }
 
         function startLogic() {
@@ -60,15 +60,16 @@
                 recognition.onresult = (e) => {
                     let combined = "";
                     for (let i = 0; i < e.results.length; i++) { combined += e.results[i][0].transcript; }
-                    lastTranscript = combined; // 时刻保持最新结果
-                    statusBar.innerText = "🎤 我在听: " + lastTranscript;
+                    // 实时更新顶部状态栏
+                    statusBar.innerText = "🎤 我在听: " + combined;
                 };
             }
 
             const onStart = (e) => {
                 if(e) e.preventDefault();
-                isHolding = true; lastTranscript = "";
+                isHolding = true;
                 talkBtn.classList.add('active');
+                statusBar.innerText = "🎤 准备听你说...";
                 if(recognition) try { recognition.start(); } catch(err){}
             };
 
@@ -78,13 +79,14 @@
                 isHolding = false;
                 talkBtn.classList.remove('active');
                 
-                // 【核心修复】立刻获取当前识别到的所有文字，即使识别还没完全停止
-                const textToSend = lastTranscript;
+                // 【核心修复】直接从状态栏抓取当前显示的文字发送
+                const capturedText = statusBar.innerText.replace("🎤 我在听: ", "").replace("🎤 准备听你说...", "").trim();
+                
                 if(recognition) try { recognition.stop(); } catch(err){}
                 
-                if(textToSend) {
-                    addMessage('user', textToSend);
-                    captureAndSend(textToSend);
+                if(capturedText) {
+                    addMessage('user', capturedText);
+                    captureAndSend(capturedText);
                 }
                 statusBar.innerText = "✅ 系统已就绪";
             };
@@ -102,7 +104,9 @@
         function playAudio(base64) {
             if (!base64) return;
             const audio = new Audio("data:audio/mp3;base64," + base64);
-            audio.play();
+            audio.play().catch(err => {
+                console.log("播放失败，尝试重新激活声音");
+            });
         }
 
         function captureAndSend(userText) {
