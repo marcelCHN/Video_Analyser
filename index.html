@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频通话 - 语音纯净版</title>
+    <title>豆包视频通话</title>
     <script src="volcengine-rtc-sdk.js"></script>
     <style>
-        /* 彻底禁用系统手势，防止长按弹出搜索或菜单 */
+        /* 1. 基础重置：禁用所有干扰手势 */
         * { 
             box-sizing: border-box; 
             -webkit-tap-highlight-color: transparent; 
@@ -17,31 +17,34 @@
             touch-action: none; 
         }
         
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, "PingFang SC", sans-serif; }
         
-        /* 全屏视频背景 */
+        /* 视频层 */
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         canvas { display: none; }
 
-        /* 顶部状态提示 */
+        /* 顶部状态反馈 (小绿字) */
         #status-bar { 
-            position: absolute; top: 15px; left: 15px; right: 15px; 
-            background: rgba(0,0,0,0.6); color: #0f0; padding: 8px 12px; 
+            position: absolute; top: env(safe-area-inset-top, 20px); left: 15px; right: 15px; 
+            background: rgba(0,0,0,0.5); color: #0f0; padding: 8px 12px; 
             font-size: 11px; z-index: 1000; border-radius: 8px; pointer-events: none; 
         }
 
-        /* 气泡对话容器 */
+        /* 气泡对话区 */
         #chat-container { 
-            position: absolute; top: 70px; left: 0; width: 100%; height: 45%; 
+            position: absolute; top: 80px; left: 0; width: 100%; height: 45%; 
             padding: 20px; overflow-y: auto; z-index: 50; 
             display: flex; flex-direction: column; gap: 12px; 
         }
         .msg { max-width: 85%; padding: 12px 18px; border-radius: 20px; font-size: 17px; line-height: 1.5; color: #fff; animation: slideIn 0.3s ease; }
         .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; }
-        .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.25); border-bottom-left-radius: 4px; backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.2); }
+        .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.2); border-bottom-left-radius: 4px; backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.15); }
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* 底部控制按钮 */
+        /* 说话时的文字预览 */
+        #speech-preview { position: absolute; bottom: 160px; width: 100%; text-align: center; color: white; font-weight: bold; font-size: 19px; text-shadow: 0 2px 5px #000; z-index: 100; min-height: 24px; padding: 0 20px; }
+
+        /* 底部控制区 */
         .controls { position: absolute; bottom: 50px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
         .talk-btn { 
             width: 100px; height: 100px; background: #7d60f5; border-radius: 50%; 
@@ -52,15 +55,24 @@
             background: #ff4d4f !important; transform: scale(1.15); 
             box-shadow: 0 0 40px #ff4d4f; 
         }
-        .hint { color: #fff; margin-top: 15px; font-size: 15px; font-weight: bold; text-shadow: 0 1px 3px #000; }
+        .hint { color: #fff; margin-top: 15px; font-size: 15px; font-weight: bold; text-shadow: 0 1px 3px #000; letter-spacing: 1px; }
 
-        /* 初始遮罩层 */
-        #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; align-items: center; justify-content: center; color: white; padding: 30px; text-align: center; }
-        .go-btn { padding: 18px 70px; border-radius: 40px; background: #7d60f5; color: white; border: none; font-weight: bold; font-size: 20px; transition: 0.2s; }
+        /* 🚀 重新设计的精美启动页 */
+        #setup-mask { 
+            position: fixed; inset: 0; background: linear-gradient(135deg, #1a1a1a 0%, #000 100%); 
+            z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            color: white; padding: 30px; text-align: center; 
+        }
+        .logo-text { font-size: 32px; font-weight: 800; margin-bottom: 8px; letter-spacing: -1px; background: linear-gradient(to bottom, #fff, #888); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .sub-text { font-size: 14px; color: #666; margin-bottom: 50px; }
+        .go-btn { padding: 18px 80px; border-radius: 40px; background: #7d60f5; color: white; border: none; font-weight: bold; font-size: 20px; box-shadow: 0 10px 30px rgba(125, 96, 245, 0.3); transition: 0.2s; }
+        .go-btn:active { transform: scale(0.95); background: #5a44cc; }
     </style>
 </head>
 <body>
-    <div id="status-bar">系统准备中...</div>
+    <div id="status-bar">系统初始化...</div>
+    <div id="speech-preview"></div>
+    
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
     <div id="chat-container"></div>
@@ -72,107 +84,114 @@
         <div class="hint" id="hint-text">按住 说话</div>
     </div>
 
+    <!-- 重新美化的启动页 -->
     <div id="setup-mask">
-        <h2>豆包视频理解</h2>
-        <button class="go-btn" onclick="initSystem()">立即开启</button>
+        <div class="logo-text">豆包视频理解</div>
+        <div class="sub-text">实时视觉分析 · 自然原声通话</div>
+        <button class="go-btn" onclick="initApp()">立即开启</button>
     </div>
 
     <script>
         const BACKEND_URL = "https://rubie-intersonant-serviceably.ngrok-free.dev";
-        let isHolding = false, recognition = null, finalTxt = "";
-        const statusBar = document.getElementById('status-bar'), chatBox = document.getElementById('chat-container'), talkBtn = document.getElementById('talk-btn');
+        
+        let isHolding = false, recognition = null, lastTranscript = "";
+        const statusBar = document.getElementById('status-bar');
+        const preview = document.getElementById('speech-preview');
+        const chatBox = document.getElementById('chat-container');
+        const talkBtn = document.getElementById('talk-btn');
 
-        async function initSystem() {
+        async function initApp() {
             // 预激活声音
             try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e) {}
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('video').srcObject = stream;
                 document.getElementById('setup-mask').style.display = 'none';
-                startApp();
-            } catch (e) { alert("需要权限！"); }
+                startLogic();
+            } catch (err) { alert("请允许摄像头和麦克风权限！"); }
         }
 
-        function startApp() {
-            statusBar.innerText = "✅ 系统就绪。请长按按钮说话。";
+        function startLogic() {
+            statusBar.innerText = "✅ 系统就绪，正在观察画面";
+            // 每 5 秒自动背景感应
+            setInterval(() => { if(!isHolding) captureAndSend(null); }, 5000);
 
-            // 语音识别初始化
-            const SpeechSDK = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechSDK) {
-                recognition = new SpeechSDK();
+            // 语音识别：回归最稳版本
+            const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (Speech) {
+                recognition = new Speech();
                 recognition.lang = 'zh-CN';
                 recognition.interimResults = true;
                 recognition.continuous = true;
-
                 recognition.onresult = (e) => {
-                    let text = "";
-                    for (let i = 0; i < e.results.length; i++) { text += e.results[i][0].transcript; }
-                    finalTxt = text;
-                    statusBar.innerText = "🎤 我在听: " + finalTxt;
+                    let combined = "";
+                    for (let i = 0; i < e.results.length; i++) { combined += e.results[i][0].transcript; }
+                    lastTranscript = combined;
+                    preview.innerText = lastTranscript;
                 };
             }
 
-            const onDown = (e) => {
+            const onStart = (e) => {
                 if(e) e.preventDefault();
                 if(isHolding) return;
-                isHolding = true; finalTxt = "";
+                isHolding = true; lastTranscript = "";
                 talkBtn.classList.add('active');
-                if (recognition) try { recognition.start(); } catch(err) {}
+                document.getElementById('hint-text').innerText = "松开 结束";
+                if(recognition) try { recognition.start(); } catch(err){}
             };
 
-            const onUp = (e) => {
+            const onEnd = (e) => {
                 if(e) e.preventDefault();
                 if(!isHolding) return;
                 isHolding = false;
                 talkBtn.classList.remove('active');
-                if (recognition) try { recognition.stop(); } catch(err) {}
+                document.getElementById('hint-text').innerText = "按住 说话";
                 
-                if (finalTxt) {
-                    addMessage('user', finalTxt);
-                    captureAndSend(finalTxt);
-                }
-                statusBar.innerText = "✅ 系统就绪";
+                // 关键点：稍微延迟一下让识别结果结稿
+                setTimeout(() => {
+                    const textToSend = lastTranscript;
+                    if(recognition) try { recognition.stop(); } catch(err){}
+                    if(textToSend) {
+                        addMessage('user', textToSend);
+                        captureAndSend(textToSend);
+                    }
+                    preview.innerText = "";
+                }, 300);
             };
 
-            // 使用 pointerDown 兼容手机
-            talkBtn.addEventListener('pointerdown', onDown);
-            talkBtn.addEventListener('pointerup', onUp);
-            talkBtn.addEventListener('pointerleave', onUp);
-
-            // 每 5 秒自动背景感应
-            setInterval(() => { if(!isHolding) captureAndSend(null); }, 5000);
+            // 绑定 PTT 手势
+            talkBtn.addEventListener('pointerdown', onStart);
+            talkBtn.addEventListener('pointerup', onEnd);
+            talkBtn.addEventListener('pointerleave', onEnd);
         }
 
         function addMessage(role, text) {
             const div = document.createElement('div');
             div.className = `msg ${role}-msg`; div.innerText = text;
             chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
-            if (role === 'ai') playResponse(text);
         }
 
-        function playResponse(text) {
-            // 本 Demo 优先尝试后端音频，回退使用本地合成
-            // 注意：此处 fetch 结果会自动触发音频播放
+        function playAudio(base64) {
+            if (!base64) return;
+            const audio = new Audio("data:audio/mp3;base64," + base64);
+            audio.play().catch(e => console.log("音频播放受阻"));
         }
 
         function captureAndSend(userText) {
             const canvas = document.createElement('canvas'), video = document.getElementById('video');
-            const ctx = canvas.getContext('2d');
+            const context = canvas.getContext('2d');
             canvas.width = 400; canvas.height = 300;
-            ctx.drawImage(video, 0, 0, 400, 300);
-            const base64 = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
+            context.drawImage(video, 0, 0, 400, 300);
+            const img = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
 
             fetch(`${BACKEND_URL}/bot/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: base64, text: userText })
+                body: JSON.stringify({ image: img, text: userText })
             }).then(res => res.json()).then(data => {
                 if (data.text) {
                     addMessage('ai', data.text);
-                    if (data.audio) {
-                        const audio = new Audio("data:audio/mp3;base64," + data.audio);
-                        audio.play();
-                    }
+                    if (data.audio) playAudio(data.audio);
                 }
             });
         }
