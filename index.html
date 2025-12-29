@@ -3,15 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频通话 - 极速原声版</title>
+    <title>豆包视频通话</title>
     <script src="volcengine-rtc-sdk.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; touch-action: none; }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        canvas { display: none; }
         #chat-container { position: absolute; top: 70px; left: 0; width: 100%; height: 45%; padding: 20px; overflow-y: auto; z-index: 50; display: flex; flex-direction: column; gap: 12px; }
         .msg { max-width: 85%; padding: 12px 18px; border-radius: 20px; font-size: 17px; line-height: 1.5; color: #fff; animation: slideIn 0.3s ease; }
-        .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; }
+        .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
         .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.25); border-bottom-left-radius: 4px; backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.2); }
         .controls { position: absolute; bottom: 50px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
         .talk-btn { width: 100px; height: 100px; background: #7d60f5; border-radius: 50%; border: 6px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 25px rgba(125,96,245,0.5); transition: 0.15s; cursor: pointer; }
@@ -27,66 +28,107 @@
     <video id="video" autoplay playsinline muted></video>
     <div id="chat-container"></div>
     <div class="controls">
-        <div class="talk-btn" id="talk-btn"><svg width="45" height="45" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg></div>
+        <div class="talk-btn" id="talk-btn">
+            <svg width="45" height="45" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
+        </div>
         <div class="hint" id="hint-text">按住 说话</div>
     </div>
     <div id="setup-mask">
-        <h1 style="margin-bottom:10px">豆包视频理解</h1>
-        <p style="color:#666; margin-bottom:50px;">原声录制模式 · 无需翻墙</p>
+        <h1 style="margin-bottom:10px">豆包视频通话</h1>
+        <p style="color:#666; margin-bottom:40px;">极致原声录制模式</p>
         <button class="go-btn" onclick="init()">开启体验</button>
     </div>
 
     <script>
         const BACKEND_URL = "https://rubie-intersonant-serviceably.ngrok-free.dev";
-        let audioContext, processor, input, streamSource, isHolding = false;
-        let leftChunks = [];
+        let audioContext, processor, isHolding = false, audioChunks = [];
 
         async function init() {
             try {
-                window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+                // 激活音频上下文
+                const welcome = new SpeechSynthesisUtterance("");
+                window.speechSynthesis.speak(welcome);
+
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('video').srcObject = stream;
-                
-                // 初始化 Web Audio 采集 PCM
-                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-                streamSource = audioContext.createMediaStreamSource(stream);
+
+                // 初始化音频处理
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                // 使用 4096 缓冲区，兼容性最好
                 processor = audioContext.createScriptProcessor(4096, 1, 1);
-                
+
                 processor.onaudioprocess = (e) => {
-                    if (!isHolding) return;
-                    const inputData = e.inputBuffer.getChannelData(0);
-                    const pcmData = new Int16Array(inputData.length);
-                    for (let i = 0; i < inputData.length; i++) {
-                        pcmData[i] = Math.min(1, inputData[i]) * 0x7FFF;
+                    if (isHolding) {
+                        // 采集原始 32位 浮点数据
+                        audioChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
                     }
-                    leftChunks.push(pcmData);
                 };
-                
-                streamSource.connect(processor);
+
+                source.connect(processor);
                 processor.connect(audioContext.destination);
 
                 document.getElementById('setup-mask').style.display = 'none';
                 setInterval(() => { if(!isHolding) captureAndSend(null); }, 5000);
-            } catch (e) { alert("需要权限: " + e.message); }
+            } catch (e) { alert("初始化失败: " + e.message); }
         }
 
         const talkBtn = document.getElementById('talk-btn');
+        const hint = document.getElementById('hint-text');
+
+        // 录音开始
         talkBtn.addEventListener('pointerdown', (e) => {
-            e.preventDefault(); isHolding = true; leftChunks = []; talkBtn.classList.add('active');
+            e.preventDefault();
+            if (audioContext.state === 'suspended') audioContext.resume();
+            isHolding = true;
+            audioChunks = [];
+            talkBtn.classList.add('active');
+            hint.innerText = "正在倾听...";
         });
-        talkBtn.addEventListener('pointerup', (e) => {
-            e.preventDefault(); if(!isHolding) return;
-            isHolding = false; talkBtn.classList.remove('active');
-            
-            // 合并 PCM 数据并转换 Base64
-            const totalLength = leftChunks.reduce((acc, curr) => acc + curr.length, 0);
-            const merged = new Int16Array(totalLength);
+
+        // 录音结束
+        talkBtn.addEventListener('pointerup', async (e) => {
+            e.preventDefault();
+            if (!isHolding) return;
+            isHolding = false;
+            talkBtn.classList.remove('active');
+            hint.innerText = "按住 说话";
+
+            // 1. 合并所有采集到的浮点数据
+            const flatData = new Float32Array(audioChunks.reduce((acc, curr) => acc + curr.length, 0));
             let offset = 0;
-            for (const chunk of leftChunks) { merged.set(chunk, offset); offset += chunk.length; }
+            for (const chunk of audioChunks) { flatData.set(chunk, offset); offset += chunk.length; }
+
+            // 2. 核心：将采样率从浏览器原生（如48k）降采样至 16000Hz
+            const pcm16 = downsample(flatData, audioContext.sampleRate, 16000);
             
-            const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(merged.buffer)));
+            // 3. 转换为 Base64 并发送
+            const base64Audio = arrayBufferToBase64(pcm16.buffer);
             captureAndSend(base64Audio);
         });
+
+        // 降采样函数
+        function downsample(buffer, fromRate, toRate) {
+            const ratio = fromRate / toRate;
+            const newLength = Math.round(buffer.length / ratio);
+            const result = new Int16Array(newLength);
+            for (let i = 0; i < newLength; i++) {
+                const nextIndex = Math.round(i * ratio);
+                let sample = buffer[nextIndex];
+                // 限制音量范围并转为 16位 整数
+                sample = Math.max(-1, Math.min(1, sample));
+                result[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+            }
+            return result;
+        }
+
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); }
+            return window.btoa(binary);
+        }
 
         function addMessage(role, text) {
             const div = document.createElement('div');
@@ -109,7 +151,10 @@
             }).then(res => res.json()).then(data => {
                 if (data.user_text) addMessage('user', data.user_text);
                 if (data.text) addMessage('ai', data.text);
-                if (data.audio) new Audio("data:audio/mp3;base64," + data.audio).play();
+                if (data.audio) {
+                    const audio = new Audio("data:audio/mp3;base64," + data.audio);
+                    audio.play();
+                }
             });
         }
     </script>
