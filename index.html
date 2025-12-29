@@ -3,132 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>豆包视频通话</title>
+    <title>豆包视频通话 - 极速原声版</title>
+    <script src="volcengine-rtc-sdk.js"></script>
     <style>
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; -webkit-touch-callout: none !important; -webkit-user-select: none !important; user-select: none !important; touch-action: none; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        canvas { display: none; }
-
-        /* 顶部日志 */
-        #debug-info { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.6); color: #0f0; padding: 8px; font-size: 11px; z-index: 1000; border-radius: 8px; pointer-events: none; border: 1px solid #333; }
-
-        /* 气泡对话 */
         #chat-container { position: absolute; top: 70px; left: 0; width: 100%; height: 45%; padding: 20px; overflow-y: auto; z-index: 50; display: flex; flex-direction: column; gap: 12px; }
         .msg { max-width: 85%; padding: 12px 18px; border-radius: 20px; font-size: 17px; line-height: 1.5; color: #fff; animation: slideIn 0.3s ease; }
-        .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.2); border-bottom-left-radius: 4px; backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.2); }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* 控制区域 */
+        .user-msg { align-self: flex-end; background: #7d60f5; border-bottom-right-radius: 4px; }
+        .ai-msg { align-self: flex-start; background: rgba(255, 255, 255, 0.25); border-bottom-left-radius: 4px; backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.2); }
         .controls { position: absolute; bottom: 50px; left: 0; width: 100%; display: flex; flex-direction: column; align-items: center; z-index: 999; }
-        .talk-btn { width: 100px; height: 100px; background: #7d60f5; border-radius: 50%; border: 6px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 25px rgba(125,96,245,0.5); transition: 0.1s; cursor: pointer; }
-        .talk-btn.active { background: #ff4d4f !important; transform: scale(1.15); box-shadow: 0 0 35px #ff4d4f; }
+        .talk-btn { width: 100px; height: 100px; background: #7d60f5; border-radius: 50%; border: 6px solid #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 25px rgba(125,96,245,0.5); transition: 0.15s; cursor: pointer; }
+        .talk-btn.active { background: #ff4d4f !important; transform: scale(1.15); box-shadow: 0 0 40px #ff4d4f; animation: breathe 1.5s infinite; }
+        @keyframes breathe { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
         .hint { color: #fff; margin-top: 15px; font-size: 15px; font-weight: bold; text-shadow: 0 1px 3px #000; }
-
-        /* 🚀 精美启动页 */
-        #setup-mask { position: fixed; inset: 0; background: linear-gradient(135deg, #1a1a1a 0%, #000 100%); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 30px; text-align: center; }
-        .go-btn { padding: 18px 80px; border-radius: 40px; background: #7d60f5; color: white; border: none; font-weight: bold; font-size: 20px; box-shadow: 0 10px 30px rgba(125,96,245,0.3); }
+        #setup-mask { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; padding: 30px; text-align: center; }
+        .go-btn { padding: 18px 70px; border-radius: 40px; background: #7d60f5; color: white; border: none; font-weight: bold; font-size: 20px; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
-    <div id="status-bar">系统初始化...</div>
     <video id="video" autoplay playsinline muted></video>
     <div id="chat-container"></div>
     <div class="controls">
-        <div class="talk-btn" id="talk-btn">
-            <svg width="45" height="45" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg>
-        </div>
+        <div class="talk-btn" id="talk-btn"><svg width="45" height="45" viewBox="0 0 24 24" fill="white"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"></path></svg></div>
         <div class="hint" id="hint-text">按住 说话</div>
     </div>
-
-    <!-- 启动屏 -->
     <div id="setup-mask">
         <h1 style="margin-bottom:10px">豆包视频理解</h1>
-        <p style="color:#666; margin-bottom:40px;">实时分析画面 · 豆包原声交互</p>
+        <p style="color:#666; margin-bottom:50px;">原声录制模式 · 无需翻墙</p>
         <button class="go-btn" onclick="init()">开启体验</button>
     </div>
 
     <script>
         const BACKEND_URL = "https://rubie-intersonant-serviceably.ngrok-free.dev";
-        let isHolding = false, recognition = null, lastTranscript = "";
-        const chatBox = document.getElementById('chat-container'), talkBtn = document.getElementById('talk-btn'), statusBar = document.getElementById('status-bar');
+        let audioContext, processor, input, streamSource, isHolding = false;
+        let leftChunks = [];
 
         async function init() {
-            // 预解锁声音
-            try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e) {}
             try {
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
                 document.getElementById('video').srcObject = stream;
-                document.getElementById('setup-mask').style.display = 'none';
-                startLogic();
-            } catch (e) { alert("权限被拒绝"); }
-        }
-
-        function startLogic() {
-            statusBar.innerText = "✅ 系统就绪，正在观察画面";
-            // 每 5 秒自动背景感应
-            setInterval(() => { if(!isHolding) captureAndSend(null); }, 5000);
-
-            const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (Speech) {
-                recognition = new Speech();
-                recognition.lang = 'zh-CN';
-                recognition.interimResults = true;
-                recognition.continuous = true;
-                recognition.onresult = (e) => {
-                    let combined = "";
-                    for (let i = 0; i < e.results.length; i++) { combined += e.results[i][0].transcript; }
-                    lastTranscript = combined;
-                    statusBar.innerText = "🎤 我在听: " + lastTranscript;
-                };
-            }
-
-            const onStart = (e) => {
-                if(e) e.preventDefault();
-                if(isHolding) return;
-                isHolding = true; lastTranscript = "";
-                talkBtn.classList.add('active');
-                if(recognition) try { recognition.start(); } catch(err){}
-            };
-
-            const onEnd = (e) => {
-                if(e) e.preventDefault();
-                if(!isHolding) return;
-                isHolding = false;
-                talkBtn.classList.remove('active');
                 
-                // 松开后强行延迟抓取，保证同步
-                setTimeout(() => {
-                    const textToSend = lastTranscript;
-                    if(recognition) try { recognition.stop(); } catch(err){}
-                    if(textToSend) {
-                        addMessage('user', textToSend);
-                        captureAndSend(textToSend);
+                // 初始化 Web Audio 采集 PCM
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                streamSource = audioContext.createMediaStreamSource(stream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                processor.onaudioprocess = (e) => {
+                    if (!isHolding) return;
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const pcmData = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        pcmData[i] = Math.min(1, inputData[i]) * 0x7FFF;
                     }
-                    statusBar.innerText = "✅ 等待豆包回复...";
-                }, 400);
-            };
+                    leftChunks.push(pcmData);
+                };
+                
+                streamSource.connect(processor);
+                processor.connect(audioContext.destination);
 
-            // 使用 Pointer 事件完美兼容所有手机浏览器
-            talkBtn.addEventListener('pointerdown', onStart);
-            talkBtn.addEventListener('pointerup', onEnd);
+                document.getElementById('setup-mask').style.display = 'none';
+                setInterval(() => { if(!isHolding) captureAndSend(null); }, 5000);
+            } catch (e) { alert("需要权限: " + e.message); }
         }
+
+        const talkBtn = document.getElementById('talk-btn');
+        talkBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); isHolding = true; leftChunks = []; talkBtn.classList.add('active');
+        });
+        talkBtn.addEventListener('pointerup', (e) => {
+            e.preventDefault(); if(!isHolding) return;
+            isHolding = false; talkBtn.classList.remove('active');
+            
+            // 合并 PCM 数据并转换 Base64
+            const totalLength = leftChunks.reduce((acc, curr) => acc + curr.length, 0);
+            const merged = new Int16Array(totalLength);
+            let offset = 0;
+            for (const chunk of leftChunks) { merged.set(chunk, offset); offset += chunk.length; }
+            
+            const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(merged.buffer)));
+            captureAndSend(base64Audio);
+        });
 
         function addMessage(role, text) {
             const div = document.createElement('div');
             div.className = `msg ${role}-msg`; div.innerText = text;
+            const chatBox = document.getElementById('chat-container');
             chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        function playAudio(base64) {
-            if (!base64) return;
-            const audio = new Audio("data:audio/mp3;base64," + base64);
-            audio.play().catch(err => console.log("播放受阻"));
-        }
-
-        function captureAndSend(userText) {
-            const canvas = document.createElement('canvas'), video = document.getElementById('video');
+        function captureAndSend(audioBase64) {
+            const video = document.getElementById('video');
+            const canvas = document.createElement('canvas');
             canvas.width = 400; canvas.height = 300;
             canvas.getContext('2d').drawImage(video, 0, 0, 400, 300);
             const img = canvas.toDataURL('image/jpeg', 0.4).split(',')[1];
@@ -136,13 +105,11 @@
             fetch(`${BACKEND_URL}/bot/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: img, text: userText })
+                body: JSON.stringify({ image: img, audio_pcm: audioBase64 })
             }).then(res => res.json()).then(data => {
-                if (data.text) {
-                    addMessage('ai', data.text);
-                    if (data.audio) playAudio(data.audio);
-                    statusBar.innerText = "✅ 豆包正在看你";
-                }
+                if (data.user_text) addMessage('user', data.user_text);
+                if (data.text) addMessage('ai', data.text);
+                if (data.audio) new Audio("data:audio/mp3;base64," + data.audio).play();
             });
         }
     </script>
